@@ -1,0 +1,7 @@
+# File privati della campagna: non vanno mai nel repository pubblico
+*campagna*.json
+*pacchetto-privato*.json
+mappe-raccolta.json
+scontro-*.json
+lanterna-backup*.json
+*.zip

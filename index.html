@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lanterna</title>
+<meta name="description" content="Taccuino del GM per Daggerheart: Paura, PG, scontri, bestiario, conti alla rovescia e diario. Offline.">
+<meta name="theme-color" content="#15110d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="brand" data-a="menu" aria-label="Campagne e impostazioni">
+    <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M26 8h12M22 14h20l-3 6H25z"/><path d="M24 20h16v26a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4z"/><path d="M32 42c-4-3-4-8 0-12 4 4 4 9 0 12z" fill="currentColor"/><path d="M26 50h12l-2 6h-8z"/></svg>
+    <span id="camp-name">Lanterna</span>
+    <span class="caret">▾</span>
+  </button>
+  <button id="liveBtn" class="livepill" data-a="go" data-tab="diario" data-sub="live" aria-label="Sessione in corso" hidden><span class="recdot"></span><b>0:00</b></button>
+  <button id="noteBtn" class="topicon" data-a="quickNote" aria-label="Nota veloce" hidden><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg></button>
+  <button id="rulesBtn" class="topicon" data-a="rules" aria-label="Schermo del GM" hidden><svg viewBox="0 0 24 24"><path d="M4 5.5C6.5 4 9.5 4 12 6c2.5-2 5.5-2 8-.5V19c-2.5-1.5-5.5-1.5-8 .5-2.5-2-5.5-2-8-.5z"/><path d="M12 6v13.5"/></svg></button>
+  <button id="searchBtn" class="topicon" data-a="search" aria-label="Cerca" hidden><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></button>
+  <div id="topfear" class="topfear" hidden>
+    <button data-a="fearAdd" data-d="-1" aria-label="Togli una Paura">−</button>
+    <span><small>Paura</small><b id="topfearN">0</b></span>
+    <button data-a="fearAdd" data-d="1" aria-label="Aggiungi una Paura">+</button>
+  </div>
+</header>
+
+<main id="main" class="main"></main>
+
+<button id="fab" class="fab" data-a="dice" aria-label="Dadi" hidden>
+  <svg viewBox="0 0 24 24"><path d="M12 2 21 7v10l-9 5-9-5V7z"/><path d="M12 2v20M3 7l9 5 9-5"/></svg>
+</button>
+
+<nav id="nav" class="nav"></nav>
+
+<div id="modal" class="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="sheet-head"><h2 id="modal-title"></h2><button class="icon" data-a="closeModal" aria-label="Chiudi">✕</button></div>
+    <div id="modal-body" class="sheet-body"></div>
+    <div id="modal-foot" class="sheet-foot"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+
+<script src="srd.js"></script>
+<script src="rules.js"></script>
+<script src="gen.js"></script>
+<script src="seed.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
