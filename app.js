@@ -42,10 +42,11 @@
     return d;
   }
   let linkVer = 0;
-  function save() {
+  function save(quiet) {
     linkVer++;
     try { localStorage.setItem(KEY, JSON.stringify(S)); }
     catch (e) { toast("Salvataggio non riuscito: " + e.message); }
+    if (!quiet && window.__syncSoon) window.__syncSoon();
   }
   const C = () => S.campaigns[S.activeId];
   const SRD = window.SRD || { adversaries: [], environments: [] };
@@ -372,7 +373,7 @@
     $("#fab").hidden = false;
     const r = route();
     const V = { tavolo: viewTable, scontro: viewCombat, bestiario: viewBestiary, mondo: viewWorld, mappe: viewMaps, diario: viewJournal }[r.tab] || viewTable;
-    main.innerHTML = V(c, r.sub, r.id); if (r.tab === "mondo" && r.sub === "mappa") atlasMount(); updateLiveUI(); $$("textarea.inl", main).forEach(autoGrow);
+    main.innerHTML = V(c, r.sub, r.id); if (r.tab === "mondo" && r.sub === "mappa") atlasMount(); updateLiveUI(); syncUI(); $$("textarea.inl", main).forEach(autoGrow);
     window.scrollTo(0, y);
   }
 
@@ -1088,6 +1089,155 @@
   }
   function showRoll(html) { const o = $("#rollOut"); if (o) { o.innerHTML = html; o.classList.remove("pop"); void o.offsetWidth; o.classList.add("pop"); } }
 
+  // ---------------------------------------------------------------- sincronizzazione (Google Drive, cartella nascosta dell'app)
+  // Ogni campagna è un file "campagna-<id>.json" nella cartella appDataFolder del Drive dell'utente:
+  // l'app vede solo i propri file, non il resto del Drive. Niente server: il browser parla direttamente con Google.
+  const SYNC_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+  const DRV_FILES = "https://www.googleapis.com/drive/v3/files";
+  const DRV_UP = "https://www.googleapis.com/upload/drive/v3/files";
+  const TOK_KEY = "lanterna.tok";
+  const SY = { busy: false, timer: null, err: "", conflicts: [], gis: null, client: null, pending: null };
+  const syncCfg = () => { S.sync = S.sync || { on: false, clientId: "", base: {}, deleted: [], last: 0, device: "" }; S.sync.base = S.sync.base || {}; S.sync.deleted = S.sync.deleted || []; return S.sync; };
+  const syncOn = () => !!(S.sync && S.sync.on && S.sync.clientId);
+  const deviceName = () => syncCfg().device || (/iphone|ipad/i.test(navigator.userAgent) ? "iPhone/iPad" : /android/i.test(navigator.userAgent) ? (/mobile/i.test(navigator.userAgent) ? "Telefono Android" : "Tablet Android") : "Computer");
+  function getTok() { try { const t = JSON.parse(localStorage.getItem(TOK_KEY) || "null"); return t && t.exp > Date.now() + 60e3 ? t.t : null; } catch (_) { return null; } }
+  function setTok(t, sec) { try { if (t) localStorage.setItem(TOK_KEY, JSON.stringify({ t, exp: Date.now() + (sec || 3600) * 1000 })); else localStorage.removeItem(TOK_KEY); } catch (_) {} }
+  function campHash(c) { const s0 = JSON.stringify(c); let h = 0x811c9dc5; for (let i = 0; i < s0.length; i++) { h ^= s0.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36) + ":" + s0.length; }
+  function loadGis() {
+    if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+    if (SY.gis) return SY.gis;
+    SY.gis = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://accounts.google.com/gsi/client"; sc.async = true; sc.onload = () => res(); sc.onerror = () => { SY.gis = null; rej(new Error("Google non raggiungibile: sei online?")); }; document.head.appendChild(sc); });
+    return SY.gis;
+  }
+  // chiede il permesso a Google. Va chiamata da un tocco dell'utente (il browser blocca i popup automatici).
+  async function syncAuth(prompt) {
+    const cfg = syncCfg(); await loadGis();
+    return new Promise((res, rej) => {
+      const client = google.accounts.oauth2.initTokenClient({ client_id: cfg.clientId, scope: SYNC_SCOPE,
+        callback: (r) => { if (r && r.access_token) { setTok(r.access_token, r.expires_in); res(r.access_token); } else rej(new Error((r && (r.error_description || r.error)) || "Accesso non riuscito")); },
+        error_callback: (e) => rej(new Error(e && e.type === "popup_closed" ? "Finestra di Google chiusa" : e && e.type === "popup_failed_to_open" ? "Il browser ha bloccato la finestra di Google" : "Accesso non riuscito")) });
+      client.requestAccessToken({ prompt: prompt || "" });
+    });
+  }
+  async function gfetch(url, opts = {}) {
+    const tok = getTok(); if (!tok) { const e = new Error("Serve l'accesso"); e.auth = true; throw e; }
+    const r = await fetch(url, Object.assign({}, opts, { headers: Object.assign({ Authorization: "Bearer " + tok }, opts.headers || {}) }));
+    if (r.status === 401) { setTok(null); const e = new Error("Accesso scaduto"); e.auth = true; throw e; }
+    if (!r.ok) { let m = r.status + ""; try { const j = await r.json(); m = (j.error && j.error.message) || m; } catch (_) {} throw new Error("Drive: " + m); }
+    return r.status === 204 ? null : r;
+  }
+  async function driveListApp() {
+    const out = []; let page = "";
+    do { const r = await gfetch(`${DRV_FILES}?spaces=appDataFolder&pageSize=200&fields=nextPageToken,files(id,name,version,modifiedTime,appProperties)${page ? "&pageToken=" + encodeURIComponent(page) : ""}`); const j = await r.json(); out.push(...(j.files || [])); page = j.nextPageToken || ""; } while (page);
+    return out;
+  }
+  async function driveUpload(fileId, name, obj, props) {
+    const meta = fileId ? { appProperties: props } : { name, parents: ["appDataFolder"], appProperties: props };
+    const b = "lanterna" + Math.random().toString(36).slice(2);
+    const body = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(obj)}\r\n--${b}--`;
+    const r = await gfetch(`${DRV_UP}${fileId ? "/" + fileId : ""}?uploadType=multipart&fields=id,version,modifiedTime`, { method: fileId ? "PATCH" : "POST", headers: { "Content-Type": "multipart/related; boundary=" + b }, body });
+    return r.json();
+  }
+  const driveGet = async (id) => (await gfetch(`${DRV_FILES}/${id}?alt=media`)).json();
+  const driveDel = (id) => gfetch(`${DRV_FILES}/${id}`, { method: "DELETE" }).catch((e) => { if (!/404/.test(e.message)) throw e; });
+
+  async function pushCamp(c, f) {
+    const cfg = syncCfg(); const h = campHash(c);
+    const up = await driveUpload(f && f.id, `campagna-${c.id}.json`, { kind: "lanterna-campaign", version: 1, savedAt: Date.now(), device: deviceName(), campaign: c }, { cid: c.id, h, cname: String(c.name).slice(0, 90), device: deviceName().slice(0, 60) });
+    cfg.base[c.id] = { fid: up.id, ver: String(up.version), hash: h, at: Date.now() };
+  }
+  async function pullCamp(f) {
+    const cfg = syncCfg(); const d = await driveGet(f.id); const c = d.campaign; if (!c || !c.id) throw new Error("File di Drive non valido");
+    migrate({ campaigns: { x: c } }); S.campaigns[c.id] = c; if (!S.activeId) S.activeId = c.id;
+    cfg.base[c.id] = { fid: f.id, ver: String(f.version), hash: campHash(c), at: Date.now() };
+    return c;
+  }
+  // confronta ogni campagna con l'ultima versione sincronizzata e decide chi ha ragione
+  async function syncNow(opts = {}) {
+    if (!syncOn() || SY.busy) return;
+    if (!getTok()) { SY.err = "auth"; syncUI(); return; }
+    SY.busy = true; SY.err = ""; syncUI();
+    const cfg = syncCfg(); let up = 0, down = 0; const conflicts = [];
+    try {
+      const files = await driveListApp();
+      const byCid = {}; files.forEach((f) => { const cid = (f.appProperties && f.appProperties.cid) || (f.name.match(/^campagna-(.+)\.json$/) || [])[1]; if (cid) byCid[cid] = f; });
+      for (const cid of cfg.deleted.slice()) { if (byCid[cid]) await driveDel(byCid[cid].id); delete byCid[cid]; delete cfg.base[cid]; cfg.deleted = cfg.deleted.filter((x) => x !== cid); }
+      for (const c of Object.values(S.campaigns)) {
+        const f = byCid[c.id]; const base = cfg.base[c.id]; const localCh = !base || base.hash !== campHash(c);
+        if (!f) { if (base) conflicts.push({ c, gone: true }); else { await pushCamp(c, null); up++; } continue; }
+        const same = f.appProperties && f.appProperties.h === campHash(c);
+        if (same) { cfg.base[c.id] = { fid: f.id, ver: String(f.version), hash: campHash(c), at: Date.now() }; continue; }
+        const remoteCh = !base || String(f.version) !== base.ver || base.fid !== f.id;
+        if (localCh && remoteCh) conflicts.push({ c, f });
+        else if (localCh) { await pushCamp(c, f); up++; }
+        else if (remoteCh) { await pullCamp(f); down++; }
+      }
+      for (const [cid, f] of Object.entries(byCid)) if (!S.campaigns[cid]) { await pullCamp(f); down++; }
+      cfg.last = Date.now(); SY.conflicts = conflicts;
+      save(true); if (down) render();
+      if (opts.verbose || down) toast(down ? `Sincronizzato: ${down} ${down === 1 ? "campagna aggiornata" : "campagne aggiornate"} da Drive` : up ? "Salvato su Drive" : "Già tutto sincronizzato");
+      if (conflicts.length) syncConflict();
+    } catch (e) { SY.err = e.auth ? "auth" : e.message; if (!e.auth || opts.verbose) toast(e.auth ? "Tocca la nuvola per riconnetterti a Google" : "Sincronizzazione non riuscita: " + e.message); }
+    finally { SY.busy = false; syncUI(); }
+  }
+  function syncConflict() {
+    const k = SY.conflicts[0]; if (!k) return;
+    const when = (t) => new Date(t).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    if (k.gone) return openModal(`«${k.c.name}» non è più su Drive`, `<p>Probabilmente è stata eliminata da un altro dispositivo. La elimino anche qui?</p><p class="sub">Se la tieni, la ricarico su Drive e torna su tutti i dispositivi.</p>`,
+      { focus: false, extra: `<button class="btn ghost" data-a="syncKeep" data-k="local">Tienila</button><button class="btn danger" data-a="syncKeep" data-k="drop">Eliminala</button>` });
+    const dev = (k.f.appProperties && k.f.appProperties.device) || "un altro dispositivo";
+    openModal(`«${k.c.name}» è cambiata in due posti`, `<p>Dall'ultima sincronizzazione la campagna è stata modificata sia qui sia su <b>${esc(dev)}</b> (${when(k.f.modifiedTime)}). Quale tengo?</p>
+      <p class="sub">Con «Tienile entrambe» la versione di Drive arriva come copia separata: poi confronti e cancelli quella che non serve.</p>`,
+      { focus: false, extra: `<button class="btn ghost" data-a="syncKeep" data-k="both">Tienile entrambe</button><button class="btn ghost" data-a="syncKeep" data-k="remote">Quella di ${esc(dev)}</button><button class="btn primary" data-a="syncKeep" data-k="local">Questa</button>` });
+  }
+  async function syncResolve(kind) {
+    const k = SY.conflicts.shift(); closeModal(); if (!k) return;
+    SY.busy = true; syncUI();
+    try {
+      if (kind === "drop") { delete S.campaigns[k.c.id]; delete syncCfg().base[k.c.id]; if (S.activeId === k.c.id) S.activeId = Object.keys(S.campaigns)[0] || null; }
+      else if (kind === "local") await pushCamp(k.c, k.gone ? null : k.f);
+      else if (kind === "remote") await pullCamp(k.f);
+      else { const d = await driveGet(k.f.id); const copy = d.campaign; copy.id = uid(); copy.name = copy.name + ` (da ${(k.f.appProperties && k.f.appProperties.device) || "Drive"})`; migrate({ campaigns: { x: copy } }); S.campaigns[copy.id] = copy; await pushCamp(k.c, k.f); }
+      save(true); render(); toast("Fatto");
+    } catch (e) { toast("Non riuscito: " + e.message); }
+    finally { SY.busy = false; syncUI(); }
+    if (SY.conflicts.length) syncConflict(); else if (kind === "both") syncNow();
+  }
+  // dopo ogni salvataggio: carica su Drive dopo qualche secondo di calma
+  function syncSoon() { if (!syncOn()) return; clearTimeout(SY.timer); SY.timer = setTimeout(() => { if (getTok()) syncNow(); else syncUI(); }, 6000); }
+  function syncDirty() { const cfg = syncCfg(); return cfg.deleted.length > 0 || Object.values(S.campaigns).some((c) => { const b = cfg.base[c.id]; return !b || b.hash !== campHash(c); }); }
+  function syncUI() {
+    const b = $("#syncBtn"); if (!b) return; b.hidden = !syncOn(); if (!syncOn()) return;
+    const need = !getTok(); const st = SY.busy ? "busy" : SY.conflicts.length ? "err" : need ? "need" : SY.err ? "err" : "ok";
+    b.className = "topicon sync " + st; if (st === "ok" && C() && C().live) b.hidden = true; // in sessione la barra è piena: compare solo se serve
+
+    b.setAttribute("aria-label", { busy: "Sincronizzo…", err: "Problema di sincronizzazione", need: "Tocca per sincronizzare", ok: "Sincronizzato" }[st]);
+  }
+  async function syncTap(verbose) {
+    if (SY.conflicts.length) return syncConflict();
+    if (!getTok()) { try { await syncAuth(""); } catch (e) { toast(e.message); return; } }
+    await syncNow({ verbose: verbose !== false });
+  }
+  function syncPanel() {
+    const cfg = syncCfg();
+    const last = cfg.last ? new Date(cfg.last).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "mai";
+    return `<h4>Più dispositivi</h4>
+      <p class="sub">Facoltativo. Accedi con Google e le campagne restano uguali su telefono, tablet e computer: l'app le salva in una cartella nascosta del tuo Drive, che può vedere solo Lanterna. Le immagini delle mappe restano sul dispositivo.</p>
+      ${cfg.on ? `<p class="sub">Questo dispositivo: <b>${esc(deviceName())}</b> · ultima sincronizzazione: <b>${last}</b>${SY.err && SY.err !== "auth" ? ` · <span class="tag hot">${esc(SY.err)}</span>` : ""}</p>
+        <div class="row gap wrap"><button class="btn" data-a="syncTap">☁ Sincronizza ora</button><button class="btn ghost" data-a="syncDevice">Nome dispositivo</button><button class="btn ghost" data-a="syncOff">Disattiva qui</button></div>`
+      : `${field("ID client di Google (vedi LEGGIMI)", "syncClient", cfg.clientId, "text", 'placeholder="123…apps.googleusercontent.com" autocomplete="off" spellcheck="false"')}
+        <button class="btn" data-a="syncStart">Accedi con Google e sincronizza</button>`}`;
+  }
+  async function syncStart() {
+    const cfg = syncCfg(); const inp = $('#modal-body [name="syncClient"]'); const id = (inp ? inp.value : cfg.clientId).trim();
+    if (!/\.apps\.googleusercontent\.com$/.test(id)) return toast("L'ID client finisce con .apps.googleusercontent.com");
+    cfg.clientId = id; save(true);
+    try { await syncAuth("consent"); } catch (e) { toast(e.message); return; }
+    cfg.on = true; save(true); closeModal(); syncUI(); toast("Collegato a Google: sincronizzo…");
+    await syncNow({ verbose: true });
+  }
+  window.__syncSoon = syncSoon;
+
   // ---------------------------------------------------------------- menu
   function menu() {
     const list = Object.values(S.campaigns).sort((a, b) => b.created - a.created);
@@ -1099,6 +1249,7 @@
       <h4>Backup</h4>
       <p class="sub">I dati sono salvati solo su questo dispositivo. Esporta un backup ogni tanto: se cancelli i dati del browser o cambi telefono, è l'unico modo per non perderli.</p>
       <div class="row gap wrap"><button class="btn" data-a="exportAll">Esporta tutto</button><button class="btn ghost" data-a="exportCamp">Esporta questa campagna</button><button class="btn ghost" data-a="importFile">Importa backup</button></div>
+      ${syncPanel()}
       <h4>Regole e contenuti</h4>
       ${check("Regola opzionale: danno pari al doppio della soglia Grave segna 4 PF", "massive", S.settings.massive)}
       ${check("Tieni lo schermo acceso mentre l'app è aperta", "wake", S.settings.wake)}
@@ -2231,6 +2382,7 @@
       openModal("Campagna", `${field("Nome", "name", c.name)}${field("Ambientazione", "frame", c.frame)}`, { onSave: () => { const f = form(); c.name = f.name.trim() || c.name; c.frame = f.frame; save(); closeModal(); render(); } }); },
     delCamp: () => { const c = C(); if (!c) return;
       if (!confirm(`Eliminare definitivamente «${c.name}»? Esporta un backup prima, se ti serve.`)) return;
+      if (S.sync && S.sync.base && S.sync.base[c.id]) S.sync.deleted = (S.sync.deleted || []).concat([c.id]);
       delete S.campaigns[c.id]; S.activeId = Object.keys(S.campaigns)[0] || null; save(); closeModal(); render(); },
     appRefresh: async () => { toast("Aggiorno l'app…");
       try { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map((r) => r.unregister())); } catch (_) {}
@@ -2256,6 +2408,12 @@
     sessionView: (el) => { const s = C().sessions.find((x) => x.id === el.dataset.id); if (!s) return;
       openModal((s.num ? "#" + s.num + " · " : "") + (s.title || "Sessione"), `${reviewBanner("session", s)}<div class="sub">${esc(s.date || "")}</div>${sessionBody(s).trim() || "<p class='sub'>Vuota.</p>"}`, { focus: false, extra: `<button class="btn primary" data-a="editSession" data-id="${s.id}">Modifica</button>` }); },
     open: (el) => openEntity(el.dataset.kind, el.dataset.id),
+
+    syncTap: () => syncTap(true),
+    syncStart: () => syncStart(),
+    syncKeep: (el) => syncResolve(el.dataset.k),
+    syncOff: () => { if (!confirm("Smettere di sincronizzare questo dispositivo? Le campagne restano qui e su Drive.")) return; const cfg = syncCfg(); cfg.on = false; cfg.base = {}; setTok(null); save(true); closeModal(); syncUI(); toast("Sincronizzazione disattivata su questo dispositivo"); },
+    syncDevice: () => openModal("Nome di questo dispositivo", `${field("Nome", "dev", deviceName())}<p class="sub">Compare negli avvisi quando la stessa campagna è stata modificata in due posti.</p>`, { onSave: () => { syncCfg().device = form().dev.trim(); save(true); closeModal(); menu(); } }),
 
     atlasUpload: () => {
       const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
@@ -2606,7 +2764,8 @@
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   window.__lanterna = { get state() { return S; }, render, get maps() { return MAPS; }, get links() { return linkIndex(); } };
   render();
-  loadMaps().then(() => { render(); processInbox(); });
+  loadMaps().then(() => { render(); processInbox(); syncUI(); if (syncOn() && getTok()) syncNow(); });
+  document.addEventListener("visibilitychange", () => { if (!syncOn() || !getTok()) { syncUI(); return; } if (document.visibilityState === "hidden") { if (syncDirty()) { clearTimeout(SY.timer); syncNow(); } } else syncNow(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") processInbox(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "drvQ") { e.preventDefault(); A.drvSearch(); } });
 })();

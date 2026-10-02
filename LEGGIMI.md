@@ -80,6 +80,29 @@ Serve solo per sfogliare e cercare la raccolta di mappe dentro l'app. Senza chia
 
 La chiave funziona perché le cartelle del pacchetto sono condivise con "chiunque abbia il link". Se un giorno il venditore le rende private, la ricerca smette di funzionare, ma le mappe già salvate tra le tue restano.
 
+## Più dispositivi: sincronizzazione con Google Drive (facoltativa, gratis)
+
+Le campagne restano uguali su telefono, tablet e computer. L'app le salva in una cartella **nascosta** del tuo Drive, che può leggere solo Lanterna: non vede gli altri tuoi file, e tu non la vedi tra i file di Drive. Le immagini delle mappe restano sul dispositivo.
+
+Serve un "ID client OAuth", da creare una volta sola nello stesso progetto Google Cloud della chiave API:
+
+1. Vai su **console.cloud.google.com** e scegli il progetto della chiave API.
+2. **API e servizi → Libreria**: controlla che **Google Drive API** sia attivata.
+3. **API e servizi → Schermata consenso OAuth** (o "Google Auth Platform"): tipo **Esterno**, nome app "Lanterna", la tua email come contatto. Nella sezione **Utenti di prova** (Pubblico/Audience) aggiungi la tua email Gmail, e quella di chiunque altro userà la sincronizzazione. Non serve pubblicare l'app.
+4. **API e servizi → Credenziali → Crea credenziali → ID client OAuth**:
+   - Tipo di applicazione: **Applicazione web**.
+   - **Origini JavaScript autorizzate**: `https://ismaelebagnara.github.io` (solo il dominio, senza `/Lanterna/` e senza barra finale).
+   - Non servono URI di reindirizzamento.
+5. Copia l'**ID client** (finisce con `.apps.googleusercontent.com`). Non è un segreto: identifica solo l'app.
+6. In Lanterna: menu → **Più dispositivi** → incolla l'ID → **Accedi con Google e sincronizza**. Google dirà che l'app "non è verificata": tocca **Continua**, è la tua.
+7. Ripeti il punto 6 su ogni dispositivo.
+
+Come funziona poi:
+- Quando apri l'app scarica le novità; quando modifichi qualcosa, salva su Drive dopo qualche secondo.
+- La **nuvola** in alto mostra lo stato: verde = sincronizzato, gialla = tocca per riconnetterti (l'accesso di Google dura un'ora; quando scade basta un tocco), rossa = c'è un problema o una scelta da fare. Durante una sessione la nuvola verde si nasconde per fare spazio.
+- Se la stessa campagna è stata modificata su due dispositivi prima di sincronizzarsi, l'app chiede quale tenere (o tiene entrambe come copie). Niente viene sovrascritto in silenzio.
+- Se elimini una campagna, sugli altri dispositivi ti chiede se eliminarla anche lì.
+
 ## Attenzione ai segreti
 
 Il repository di GitHub Pages è pubblico: **non caricarci mai i file della tua campagna** (backup, pacchetti come `umbra-campagna-da-confermare.json` o `umbra-pacchetto-privato.json`, né `mappe-raccolta.json`, che contiene i link del pacchetto che hai comprato). Contengono i segreti per il GM. Importali direttamente dal telefono con "Importa backup".

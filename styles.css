@@ -501,3 +501,11 @@ textarea.inl { resize: none; overflow: hidden; line-height: 1.35; min-height: 30
 .atinfo h3 { margin: 0; }
 .atinfo h4 { margin: 10px 0 4px; }
 .chip.onmap::before { content: "◉ "; color: var(--hope); }
+
+/* ---- sincronizzazione */
+.topicon.sync .sx { display: none; }
+.topicon.sync.ok svg { stroke: var(--stress); } .topicon.sync.ok .sx { display: inline; }
+.topicon.sync.need { border-color: var(--hope); } .topicon.sync.need svg { stroke: var(--hope); }
+.topicon.sync.err { border-color: var(--hp); } .topicon.sync.err svg { stroke: var(--hp); }
+.topicon.sync.busy svg { stroke: var(--muted); animation: syncpulse 1s ease-in-out infinite alternate; }
+@keyframes syncpulse { to { opacity: .35; } }
