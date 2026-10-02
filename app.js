@@ -323,7 +323,7 @@
   function hideLinkPanels() { $$("#modal-body .linkpanel").forEach((p) => { p.hidden = true; p.innerHTML = ""; p.dataset.start = ""; }); }
   const RULES = window.RULES || [];
   function rulesSheet(openId) {
-    openModal("Schermo del GM", `<input type="search" id="rq" class="search" placeholder="Cerca una regola: Paura, riposo, Vulnerabile…">
+    openModal("Schermo del GM", `${screenTabs("regole")}<input type="search" id="rq" class="search" placeholder="Cerca una regola: Paura, riposo, Vulnerabile…">
       <div id="rlist">${RULES.map((r) => `<details class="rule" data-id="${r.id}" ${r.id === openId ? "open" : ""}><summary>${esc(r.title)}</summary><div class="rbody">${r.body}</div></details>`).join("")}</div>`, { focus: false });
     const q = $("#rq"); q.addEventListener("input", () => { const v = q.value.trim().toLowerCase();
       $$("#rlist .rule").forEach((d) => { const r = RULES.find((x) => x.id === d.dataset.id); const hit = !v || (r.title + " " + r.tags + " " + d.querySelector(".rbody").textContent).toLowerCase().includes(v); d.hidden = !hit; d.open = !!v && hit; }); });
@@ -746,8 +746,7 @@
         : empty("Nessun ambiente", "Crea luoghi, eventi e attraversamenti con le loro caratteristiche, o cambia i filtri.", "")}`;
     }
     if (sub === "tabelle") {
-      return tabs + `<section class="card"><h2>Al volo</h2><p class="sub">PNG, nomi, dicerie, eventi, tempo, locande, e bottino e consumabili dello SRD per rarità. Li trovi anche nel pulsante dei dadi.</p><div class="chips">${GEN_KINDS.map(([k, v]) => `<button class="chip" data-a="gen" data-k="${k}">${v}</button>`).join("")}</div></section>
-        <div class="sechead"><h2>Tabelle casuali</h2><button class="btn small" data-a="newTable">+ Nuova</button></div>
+      return tabs + `<div class="sechead"><h2>Tabelle casuali</h2><button class="btn small" data-a="newTable">+ Nuova</button></div>
         ${c.tables.length ? `<div class="list">${c.tables.map((t) => `<div class="listrow"><div><b>${esc(t.name)}</b><div class="sub">d${esc(t.die)} · ${t.entries.length} voci</div></div><div class="row gap"><button class="btn small" data-a="rollTable" data-id="${t.id}">Tira</button><button class="icon" data-a="editTable" data-id="${t.id}">✎</button></div></div>`).join("")}</div>`
         : empty("Nessuna tabella", "Incontri casuali, peggioramenti, nomi, bottini: tirali con un tocco.", "")}`;
     }
@@ -1078,7 +1077,7 @@
         <div class="row gap wrap">${[4, 6, 8, 10, 12, 20].map((d) => `<button class="btn small" data-a="rollQuick" data-d="${d}">d${d}</button>`).join("")}</div>
         <div class="row gap"><input name="expr" placeholder="3d8+4" class="grow"><button class="btn" data-a="rollExpr">Tira</button></div>
       </div>
-      <div class="dice-free"><h4>Al volo</h4><div class="chips">${GEN_KINDS.map(([k, v]) => `<button class="chip" data-a="gen" data-k="${k}">${v}</button>`).join("")}</div></div>
+      <div class="dice-free"><h4>Al volo</h4><div class="chips">${[["oracolo", "Oracolo"], ["png", "PNG"], ["compl", "Complicazione"], ["bottino", "Bottino"]].map(([k, v]) => `<button class="chip" data-a="gen" data-k="${k}">${v}</button>`).join("")}<button class="chip" data-a="genOpen">Tutti…</button></div></div>
       <div id="rollOut"></div>
       <h4>Ultimi tiri</h4><ul class="rolllog" id="rollLog">${rollLog(c)}</ul>`, { focus: false });
   }
@@ -2190,14 +2189,51 @@
   // ---------------------------------------------------------------- generatori al volo
   const GEN = window.GEN || null;
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-  const GEN_KINDS = [["png", "PNG"], ["nome", "Nome"], ["diceria", "Diceria"], ["evento", "Evento"], ["tempo", "Tempo"], ["locanda", "Locanda"], ["bottino", "Bottino"], ["consumabile", "Consumabile"]];
+  const GEN_GROUPS = [
+    ["Persone", [["png", "PNG"], ["nome", "Nomi"], ["tasca", "In tasca"]]],
+    ["Storia", [["oracolo", "Oracolo"], ["ispira", "Ispirazione"], ["compl", "Complicazione"], ["aggancio", "Incarico"], ["segreto", "Segreto"], ["diceria", "Diceria"]]],
+    ["Luoghi", [["partenza", "Inizio forte"], ["luogo", "Luogo"], ["trappola", "Trappola"], ["evento", "Viaggio"], ["tempo", "Tempo"], ["locanda", "Locanda"]]],
+    ["Tesori", [["bottino", "Bottino"], ["consumabile", "Consumabile"]]],
+  ];
+  const GEN_KINDS = GEN_GROUPS.flatMap((g) => g[1]);
+  const ORACLE = [["prob", "Probabile", 10], ["incerto", "Incerto", 13], ["improb", "Improbabile", 16]];
+  const TRAP_DMG = { 1: "1d10+3", 2: "2d10+4", 3: "3d10+5", 4: "4d10+12" };
+  const PNG_BOND = ["gli deve un favore", "l'ha visto fare qualcosa che non doveva", "è un parente lontano", "lo scambia per qualcun altro", "ha sentito parlare di lui, e non bene", "gli ha venduto qualcosa di difettoso", "lo ammira in segreto", "ha perso qualcuno per colpa sua"];
+  const partyTier = () => { const c = C(); const ls = c ? c.pcs.map((p) => num(p.level, 1)) : []; const l = ls.length ? Math.round(ls.reduce((x, y) => x + y, 0) / ls.length) : 1; return l <= 1 ? 1 : l <= 4 ? 2 : l <= 7 ? 3 : 4; };
+  const pickN = (arr, n) => { const a0 = arr.slice(); const out = []; while (out.length < n && a0.length) out.push(a0.splice(Math.floor(Math.random() * a0.length), 1)[0]); return out; };
   const RARITY = [["comune", "Comune", 1], ["noncomune", "Non comune", 2], ["raro", "Raro", 3], ["leggendario", "Leggendario", 4]];
-  const genState = { kind: "png", culture: "", rarity: "comune", table: "tutte", last: null };
+  const genState = { kind: "png", culture: "", rarity: "comune", table: "tutte", odds: "incerto", place: "", tier: 0, last: null };
   const LOOT_TABLES = [["tutte", "Tutte"], ["base", "Manuale base"], ["agg", "Aggiuntiva SRD 2.0"]];
   const genName = (cult) => { const cs = Object.keys(GEN.cultures); const k = cult || pick(cs); return { name: pick(GEN.cultures[k].names) + (Math.random() < 0.55 ? " " + pick(GEN.epithets) : ""), culture: GEN.cultures[k].label.replace(/ \(.*\)$/, "") }; };
   function genRoll(kind) {
     const N = GEN.npc;
-    if (kind === "png") { const n = genName(genState.culture); return { kind, title: n.name, lines: [["Chi è", `${N.mestiere[Math.floor(Math.random() * N.mestiere.length)]} (${n.culture})`], ["Aspetto", pick(N.aspetto)], ["Come parla", pick(N.voce)], ["Vuole", pick(N.vuole)], ["Nasconde", pick(N.nasconde)], ["Verso i PG", pick(N.verso)]] }; }
+    if (kind === "png") { const n = genName(genState.culture); const c = C(); const pc = c && c.pcs.length ? pick(c.pcs) : null; const P2 = GEN.png2 || { tic: [], frase: [] };
+      return { kind, title: n.name, lines: [["Chi è", `${N.mestiere[Math.floor(Math.random() * N.mestiere.length)]} (${n.culture})`], ["Aspetto", pick(N.aspetto)], ["Come parla", pick(N.voce)], P2.tic.length ? ["Tic", pick(P2.tic)] : null, P2.frase.length ? ["Frase tipica", pick(P2.frase)] : null, ["Vuole", pick(N.vuole)], ["Nasconde", pick(N.nasconde)], ["Verso i PG", pick(N.verso)], pc ? ["Legame", `con ${pc.name}: ${pick(PNG_BOND)}`] : null].filter(Boolean) }; }
+    if (kind === "tasca") return { kind, title: "Cosa ha in tasca", lines: pickN(GEN.tasche, 3).map((t) => ["", t]) };
+    if (kind === "oracolo") {
+      const o = ORACLE.find((x) => x[0] === genState.odds) || ORACLE[1]; const h = rnd(12), f = rnd(12), tot = h + f; const yes = tot >= o[2];
+      const crit = h === f; const title = crit ? (yes ? "Sì, e molto di più!" : "No, ma succede qualcosa d'inatteso") : yes ? (h > f ? "Sì, e…" : "Sì, ma…") : (h > f ? "No, ma…" : "No, e…");
+      const mean = crit ? "Dadi uguali: una svolta. Usate l'ispirazione qui sotto." : yes ? (h > f ? "Va bene, con un vantaggio in più." : "Va bene, ma con un costo o una complicazione.") : (h > f ? "Non va, ma resta uno spiraglio o un indizio." : "Non va, e la situazione peggiora.");
+      return { kind, title, sub: `${o[1]} (serve ${o[2]}+) · Speranza ${h} + Paura ${f} = ${tot}`, lines: [["Cosa significa", mean], crit || (!yes && f > h) ? ["Ispirazione", `${pick(GEN.azioni)} ${pick(GEN.temi)}`] : null].filter(Boolean) };
+    }
+    if (kind === "ispira") return { kind, title: `${pick(GEN.azioni)} ${pick(GEN.temi)}`, sub: "Azione + tema: leggetelo come «chi vuole fare cosa»", lines: [["Oppure", `${pick(GEN.azioni)} ${pick(GEN.temi)}`], ["Oppure", `${pick(GEN.azioni)} ${pick(GEN.temi)}`]] };
+    if (kind === "compl") { const [cat, t] = pick(GEN.complicazioni); return { kind, title: "Cosa va storto", sub: cat + " · ottima dopo un tiro con Paura, o spendendo una Paura", lines: [["", t]] }; }
+    if (kind === "partenza") { const ks = Object.keys(GEN.partenze); const k = genState.place && GEN.partenze[genState.place] ? genState.place : pick(ks); return { kind, title: "Inizio forte", sub: k + " · partite da qui, nel mezzo dell'azione", lines: [["", pick(GEN.partenze[k])]] }; }
+    if (kind === "luogo") { const L = GEN.luoghi; return { kind, title: `${pick(L.nomi.a)} ${pick(L.nomi.b)}`, lines: pickN(L.aspetti, 3).map((t) => ["Si vede", t]).concat([["Si sente", pick(L.sensi)], ["Segreto", pick(L.segreti)]]) }; }
+    if (kind === "trappola") { const T = GEN.trappole; const tier = genState.tier || partyTier(); const d = { 1: 11, 2: 14, 3: 17, 4: 20 }[tier];
+      const m = pick(T.meccanismi); const el = pick(T.elementi);
+      return { kind, title: "Trappola: " + m, sub: `Rango ${tier} · Difficoltà ${d}`, lines: [["Scatta con", pick(T.inneschi)], ["Elemento", el], ["Indizio", pick(T.indizi)], ["Effetto", `Tiro Reazione di Agilità (${d}): in caso di fallimento ${TRAP_DMG[tier]} danni ${/ombra/.test(el) ? "magici" : "fisici"}, in caso di successo la metà.`]] };
+    }
+    if (kind === "aggancio") { const G = GEN.agganci; return { kind, title: "Incarico", lines: [["Chi lo chiede", pick(G.chi)], ["Cosa", pick(G.cosa)], ["Dove", pick(G.dove)], ["Ma", pick(G.ma)], ["In cambio", pick(G.premio)]] }; }
+    if (kind === "segreto") {
+      const c = C(); const W = c ? c.world : []; const by = (k) => W.filter((w) => w.kind === k).map((w) => w.name);
+      const png = by("png"), loc = by("luogo"), fac = by("fazione"); const usedCamp = png.length >= 2;
+      const A0 = png.length ? pickN(png, 2) : []; const fill = { A: A0[0] || pick(["il mercante", "la guardia anziana", "l'oste"]), B: A0[1] || pick(["il sindaco", "una guaritrice", "un forestiero"]), L: loc.length ? pick(loc) : pick(["il vecchio mulino", "la cripta", "il mercato"]), F: fac.length ? pick(fac) : pick(["la gilda", "il culto", "la milizia"]) };
+      const mid = (n) => String(n).replace(/^(Il|Lo|La|I|Gli|Le|L['’])(?=\s|['’]|$)/, (m) => m.toLowerCase());
+      const t = pick(GEN.segreti).replace(/\be (?=\{[ABLF]\})/g, "e ").replace(/(^|.)\{([ABLF])\}/g, (m, pre, k) => pre + (pre === "" || pre === "«" ? fill[k] : mid(fill[k])));
+      const t2 = t.replace(/ e (?=[EÈ])/g, " ed "); void t2;
+      return { kind, title: "Segreto o indizio", sub: usedCamp ? "con i nomi della vostra campagna" : "aggiungi PNG e luoghi nel Mondo per segreti con i vostri nomi", lines: [["", (t2[0].toUpperCase() + t2.slice(1))]], secret: t2[0].toUpperCase() + t2.slice(1) };
+    }
     if (kind === "nome") { const arr = Array.from({ length: 6 }, () => genName(genState.culture)); return { kind, title: "Nomi", lines: arr.map((n) => [n.culture, n.name]) }; }
     if (kind === "diceria") return { kind, title: "Diceria", lines: [["Si dice che…", pick(GEN.dicerie)]] };
     if (kind === "evento") return { kind, title: "Evento lungo la strada", lines: [["", pick(GEN.eventi)]] };
@@ -2217,14 +2253,19 @@
     if (kind) genState.kind = kind;
     const res = genState.last && genState.last.kind === genState.kind ? genState.last : (genState.last = genRoll(genState.kind));
     const opts = genState.kind === "png" || genState.kind === "nome" ? `<div class="chips">${[["", "Qualsiasi"]].concat(Object.entries(GEN.cultures).map(([k, v]) => [k, v.label])).map(([k, v]) => `<button class="chip small ${genState.culture === k ? "on" : ""}" data-a="genCult" data-k="${k}">${esc(v)}</button>`).join("")}</div>`
+      : genState.kind === "oracolo" ? `<div class="chips">${ORACLE.map(([k, v]) => `<button class="chip small ${genState.odds === k ? "on" : ""}" data-a="genOpt" data-o="odds" data-k="${k}">${v}</button>`).join("")}</div>`
+      : genState.kind === "partenza" ? `<div class="chips">${[["", "Qualsiasi"]].concat(Object.keys(GEN.partenze).map((k) => [k, k])).map(([k, v]) => `<button class="chip small ${genState.place === k ? "on" : ""}" data-a="genOpt" data-o="place" data-k="${esc(k)}">${esc(v)}</button>`).join("")}</div>`
+      : genState.kind === "trappola" ? `<div class="chips">${[0, 1, 2, 3, 4].map((k) => `<button class="chip small ${genState.tier === k ? "on" : ""}" data-a="genOpt" data-o="tier" data-k="${k}">${k ? "Rango " + k : "Rango del gruppo"}</button>`).join("")}</div>`
       : genState.kind === "bottino" || genState.kind === "consumabile" ? `<div class="chips">${RARITY.map(([k, v, n]) => `<button class="chip small ${genState.rarity === k ? "on" : ""}" data-a="genRar" data-k="${k}">${v} (${n}d12)</button>`).join("")}</div>
         <div class="chips">${LOOT_TABLES.map(([k, v]) => `<button class="chip small ${genState.table === k ? "on" : ""}" data-a="genTab" data-k="${k}">${v}</button>`).join("")}</div>` : "";
-    openModal("Al volo", `<div class="chips scrollx">${GEN_KINDS.map(([k, v]) => `<button class="chip ${genState.kind === k ? "on" : ""}" data-a="genKind" data-k="${k}">${v}</button>`).join("")}</div>${opts}
+    openModal("Schermo del GM", `${screenTabs("volo")}<div class="gengroups">${GEN_GROUPS.map(([g, ks]) => `<div class="gengroup"><span>${g}</span><div class="chips">${ks.map(([k, v]) => `<button class="chip small ${genState.kind === k ? "on" : ""}" data-a="genKind" data-k="${k}">${v}</button>`).join("")}</div></div>`).join("")}</div>${opts}
       <div class="genres"><h3>${esc(res.title)}</h3>${res.sub ? `<div class="sub">${esc(res.sub)}</div>` : ""}
         <dl>${res.lines.map(([k, v]) => `${k ? `<dt>${esc(k)}</dt>` : ""}<dd>${esc(v)}</dd>`).join("")}</dl></div>
-      <div class="row gap wrap">${res.kind === "png" ? `<button class="btn small" data-a="genSave">Salva nel Mondo</button>` : ""}${liveSession() ? `<button class="btn small ghost" data-a="genLog">Nel diario</button>` : ""}<button class="btn small ghost" data-a="genCopy">Copia</button></div>`,
+      <div class="row gap wrap">${res.kind === "png" || res.kind === "luogo" ? `<button class="btn small" data-a="genSave">Salva nel Mondo</button>` : ""}${res.secret ? `<button class="btn small" data-a="genSecret">Tra i segreti</button>` : ""}${liveSession() ? `<button class="btn small ghost" data-a="genLog">Nel diario</button>` : ""}<button class="btn small ghost" data-a="genCopy">Copia</button></div>`,
       { focus: false, extra: `<button class="btn primary big" data-a="genAgain">Rilancia</button>` });
   }
+  // lo Schermo del GM ha due pagine: le regole da consultare e i generatori "al volo"
+  const screenTabs = (on) => `<div class="segment screentabs"><button class="${on === "regole" ? "on" : ""}" data-a="rules">📖 Regole</button><button class="${on === "volo" ? "on" : ""}" data-a="genOpen">🎲 Al volo</button></div>`;
   const genText = (r) => [r.title, r.sub || ""].concat(r.lines.map(([k, v]) => (k ? k + ": " : "") + v)).filter(Boolean).join("\n");
 
 
@@ -2533,9 +2574,13 @@
     genAgain: () => { genState.last = null; genSheet(); },
     genCopy: () => { if (genState.last) copyText(genText(genState.last), "Copiato"); },
     genLog: () => { const r = genState.last; if (!r) return; logEv(`${r.kind === "png" ? "PNG" : r.title}: ${r.kind === "png" ? r.title + " — " + r.lines.map((l) => l[1]).join("; ") : r.lines.map((l) => l[1]).join("; ")}`, { k: "nota", tag: r.kind === "png" ? "png" : "" }); save(); toast("Aggiunto al diario della serata"); },
-    genSave: () => { const r = genState.last; if (!r) return; const c = C(); const w = { id: uid(), kind: "png", name: r.title, subtitle: r.lines[0][1], tags: "al volo", notes: r.lines.slice(1).map(([k, v]) => `${k}: ${v}`).join("\n") };
-      c.world.push(w); save(); closeModal(); render(); toast("PNG salvato nel Mondo", { label: "Apri", run: () => A.viewWorld({ dataset: { id: w.id } }) }); },
+    genOpt: (el) => { const o = el.dataset.o; genState[o] = o === "tier" ? num(el.dataset.k, 0) : el.dataset.k; genState.last = null; genSheet(); },
+    genSecret: () => { const r = genState.last; if (!r || !r.secret) return; const c = C(); (c.secrets = c.secrets || []).push({ id: uid(), txt: r.secret, created: Date.now(), revealed: false }); save(); toast("Aggiunto ai segreti: lo trovi nella preparazione della sessione"); },
+    genSave: () => { const r = genState.last; if (!r) return; const c = C(); const isPlace = r.kind === "luogo";
+      const w = isPlace ? { id: uid(), kind: "luogo", name: r.title, subtitle: "", tags: "al volo", notes: r.lines.map(([k, v]) => `${k}: ${v}`).join("\n") } : { id: uid(), kind: "png", name: r.title, subtitle: r.lines[0][1], tags: "al volo", notes: r.lines.slice(1).map(([k, v]) => `${k}: ${v}`).join("\n") };
+      c.world.push(w); save(); closeModal(); render(); toast(isPlace ? "Luogo salvato nel Mondo" : "PNG salvato nel Mondo", { label: "Apri", run: () => A.viewWorld({ dataset: { id: w.id } }) }); },
     rules: () => rulesSheet(),
+    genOpen: () => genSheet(),
     toastAct: () => { const f = toast._act; toast._act = null; $("#toast").classList.remove("show"); if (f) f(); },
 
     pcCond: (el) => { const p = C().pcs.find((x) => x.id === el.dataset.id); toggleIn(p, "conditions", el.dataset.k); save(); render(); },

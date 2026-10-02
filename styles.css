@@ -509,3 +509,8 @@ textarea.inl { resize: none; overflow: hidden; line-height: 1.35; min-height: 30
 .topicon.sync.err { border-color: var(--hp); } .topicon.sync.err svg { stroke: var(--hp); }
 .topicon.sync.busy svg { stroke: var(--muted); animation: syncpulse 1s ease-in-out infinite alternate; }
 @keyframes syncpulse { to { opacity: .35; } }
+.screentabs { margin-bottom: 10px; }
+.gengroups { display: grid; gap: 4px; margin-bottom: 8px; }
+.gengroup { display: grid; grid-template-columns: 62px 1fr; align-items: start; gap: 6px; }
+.gengroup > span { font-family: "Cinzel", serif; font-size: .62rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding-top: 9px; }
+.gengroup .chips { margin: 0; }
