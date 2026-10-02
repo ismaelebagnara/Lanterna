@@ -1173,9 +1173,10 @@
         else if (remoteCh) { await pullCamp(f); down++; }
       }
       for (const [cid, f] of Object.entries(byCid)) if (!S.campaigns[cid]) { await pullCamp(f); down++; }
+      const mr = await syncMaps(files); up += mr.up; if (mr.down) { down += mr.down; Object.keys(thumbURL).forEach((k) => delete thumbURL[k]); }
       cfg.last = Date.now(); SY.conflicts = conflicts;
       save(true); if (down) render();
-      if (opts.verbose || down) toast(down ? `Sincronizzato: ${down} ${down === 1 ? "campagna aggiornata" : "campagne aggiornate"} da Drive` : up ? "Salvato su Drive" : "Già tutto sincronizzato");
+      if (opts.verbose || down) toast(down ? `Sincronizzato: ${down} novità da Drive` : up ? "Salvato su Drive" : "Già tutto sincronizzato");
       if (conflicts.length) syncConflict();
     } catch (e) { SY.err = e.auth ? "auth" : e.message; if (!e.auth || opts.verbose) toast(e.auth ? "Tocca la nuvola per riconnetterti a Google" : "Sincronizzazione non riuscita: " + e.message); }
     finally { SY.busy = false; syncUI(); }
@@ -1203,6 +1204,54 @@
     finally { SY.busy = false; syncUI(); }
     if (SY.conflicts.length) syncConflict(); else if (kind === "both") syncNow();
   }
+  // ---- mappe: immagini come file "mappa-<id>.bin", dati e segni in "mappe-indice.json", insieme alla Raccolta e alla chiave API
+  const mapMeta = (m) => { const o = Object.assign({}, m); delete o.thumb; return o; };
+  const mapSig = () => MAPS.map((m) => m.id + ":" + (m.updated || 0)).sort().join("|");
+  const setSig = () => campHash({ lib: S.settings.mapLib || null, key: S.settings.driveKey || "" });
+  async function driveUploadBlob(name, blob, props) {
+    const b = "lanterna" + Math.random().toString(36).slice(2);
+    const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: ["appDataFolder"], appProperties: props })}\r\n--${b}\r\nContent-Type: ${blob.type || "image/jpeg"}\r\n\r\n`, blob, `\r\n--${b}--`]);
+    const r = await gfetch(`${DRV_UP}?uploadType=multipart&fields=id,version`, { method: "POST", headers: { "Content-Type": "multipart/related; boundary=" + b }, body });
+    return r.json();
+  }
+  async function syncMaps(files) {
+    if (!mapsLoaded) await loadMaps();
+    const cfg = syncCfg(); cfg.mapDeleted = cfg.mapDeleted || [];
+    const idxF = files.find((f) => f.name === "mappe-indice.json");
+    const blobF = {}; files.forEach((f) => { const mm = f.name.match(/^mappa-(.+)\.bin$/); if (mm) blobF[mm[1]] = f; });
+    const remoteCh = !!idxF && String(idxF.version) !== cfg.mapVer;
+    const localCh = mapSig() !== cfg.mapSig || setSig() !== cfg.setSig || cfg.mapDeleted.length > 0;
+    if (!remoteCh && !localCh && (idxF || !MAPS.length)) return { up: 0, down: 0 };
+    const R = idxF ? await driveGet(idxF.id) : {}; R.kind = "lanterna-maps-sync"; R.maps = R.maps || {}; R.deleted = R.deleted || [];
+    let changed = !idxF, up = 0, down = 0;
+    for (const id of cfg.mapDeleted) { if (!R.deleted.includes(id)) R.deleted.push(id); delete R.maps[id]; if (blobF[id]) { await driveDel(blobF[id].id); delete blobF[id]; } changed = true; }
+    cfg.mapDeleted = [];
+    for (const id of R.deleted) if (mapById(id)) { await idbDel("maps", id); await idbDel("blobs", id); MAPS = MAPS.filter((x) => x.id !== id); down++; }
+    const todo = MAPS.filter((m) => !blobF[m.id]); let n = 0;
+    for (const m of MAPS.slice()) {
+      const r = R.maps[m.id];
+      if (!blobF[m.id]) { const b = await idbGet("blobs", m.id); if (!b) continue; if (todo.length > 2) toast(`Carico le mappe su Drive: ${++n} di ${todo.length}`); await driveUploadBlob(`mappa-${m.id}.bin`, b, { mid: m.id }); R.maps[m.id] = mapMeta(m); changed = true; up++; }
+      else if (!r || (m.updated || 0) > (r.updated || 0)) { R.maps[m.id] = mapMeta(m); changed = true; up++; }
+      else if ((r.updated || 0) > (m.updated || 0)) { Object.assign(m, r); await idbPut("maps", m); down++; }
+    }
+    const news = Object.keys(R.maps).filter((id) => !mapById(id) && blobF[id]); n = 0;
+    for (const id of news) {
+      if (news.length > 2) toast(`Scarico le mappe da Drive: ${++n} di ${news.length}`);
+      const blob = await (await gfetch(`${DRV_FILES}/${blobF[id].id}?alt=media`)).blob();
+      let thumb = null; try { const bmp = await bitmapOf(blob); thumb = await toBlob(canvasOf(bmp, 480), 0.72); if (bmp.close) bmp.close(); } catch (_) {}
+      const m = Object.assign({}, R.maps[id], { thumb }); await idbPut("blobs", blob, id); await idbPut("maps", m); MAPS.unshift(m); down++;
+    }
+    const first = cfg.setSig === undefined; const RS = R.settings || {};
+    if (first && (RS.mapLib || RS.driveKey)) { S.settings.mapLib = S.settings.mapLib || RS.mapLib || null; S.settings.driveKey = S.settings.driveKey || RS.driveKey || ""; DRV.cache = {}; cfg.setSig = R.setSig; down++; }
+    else if (first && !S.settings.mapLib && !S.settings.driveKey) cfg.setSig = setSig();
+    const ls = setSig();
+    if (ls !== cfg.setSig) { R.settings = { mapLib: S.settings.mapLib || null, driveKey: S.settings.driveKey || "" }; R.setSig = ls; changed = true; }
+    else if (R.setSig && R.setSig !== cfg.setSig && R.settings) { S.settings.mapLib = R.settings.mapLib; S.settings.driveKey = R.settings.driveKey; DRV.cache = {}; down++; }
+    cfg.setSig = setSig();
+    if (changed) { const u = await driveUpload(idxF && idxF.id, "mappe-indice.json", R, { kind: "maps" }); cfg.mapVer = String(u.version); } else cfg.mapVer = String(idxF.version);
+    cfg.mapSig = mapSig();
+    return { up, down };
+  }
   // dopo ogni salvataggio: carica su Drive dopo qualche secondo di calma
   function syncSoon() { if (!syncOn()) return; clearTimeout(SY.timer); SY.timer = setTimeout(() => { if (getTok()) syncNow(); else syncUI(); }, 6000); }
   function syncDirty() { const cfg = syncCfg(); return cfg.deleted.length > 0 || Object.values(S.campaigns).some((c) => { const b = cfg.base[c.id]; return !b || b.hash !== campHash(c); }); }
@@ -1222,7 +1271,7 @@
     const cfg = syncCfg();
     const last = cfg.last ? new Date(cfg.last).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "mai";
     return `<h4>Più dispositivi</h4>
-      <p class="sub">Facoltativo. Accedi con Google e le campagne restano uguali su telefono, tablet e computer: l'app le salva in una cartella nascosta del tuo Drive, che può vedere solo Lanterna. Le immagini delle mappe restano sul dispositivo.</p>
+      <p class="sub">Facoltativo. Accedi con Google e le campagne restano uguali su telefono, tablet e computer: l'app le salva in una cartella nascosta del tuo Drive, che può vedere solo Lanterna. Si sincronizzano anche le mappe (immagini, segni e nebbia), la Raccolta e la chiave API.</p>
       ${cfg.on ? `<p class="sub">Questo dispositivo: <b>${esc(deviceName())}</b> · ultima sincronizzazione: <b>${last}</b>${SY.err && SY.err !== "auth" ? ` · <span class="tag hot">${esc(SY.err)}</span>` : ""}</p>
         <div class="row gap wrap"><button class="btn" data-a="syncTap">☁ Sincronizza ora</button><button class="btn ghost" data-a="syncDevice">Nome dispositivo</button><button class="btn ghost" data-a="syncOff">Disattiva qui</button></div>`
       : `${field("ID client di Google (vedi LEGGIMI)", "syncClient", cfg.clientId, "text", 'placeholder="123…apps.googleusercontent.com" autocomplete="off" spellcheck="false"')}
@@ -1364,7 +1413,8 @@
   const mapById = (id) => MAPS.find((m) => m.id === id);
   const turl = (m) => { if (!m || !m.thumb) return ""; if (!thumbURL[m.id]) thumbURL[m.id] = URL.createObjectURL(m.thumb); return thumbURL[m.id]; };
   async function loadMaps() { try { MAPS = (await idbAll("maps")) || []; } catch (e) { console.error(e); MAPS = []; } mapsLoaded = true; }
-  async function saveMapMeta(m) { m.updated = Date.now(); await idbPut("maps", m); const i = MAPS.findIndex((x) => x.id === m.id); if (i >= 0) MAPS[i] = m; else MAPS.unshift(m); }
+  async function saveMapMeta(m) { m.updated = Date.now(); await idbPut("maps", m); const i = MAPS.findIndex((x) => x.id === m.id); if (i >= 0) MAPS[i] = m; else MAPS.unshift(m);
+    if (S.sync && S.sync.mapDeleted) S.sync.mapDeleted = S.sync.mapDeleted.filter((x) => x !== m.id); if (window.__syncSoon) window.__syncSoon(); }
 
   // ---- immagini
   async function bitmapOf(blob) {
@@ -2315,7 +2365,7 @@
     mapView: (el) => { const m = mapById(el.dataset.id); if (m) openViewer(m); },
     mapEdit: (el) => { const m = mapById(el.dataset.id); if (m) mapEditor(m); },
     mapDel: async (el) => { const m = mapById(el.dataset.id); if (!m) return; const blob = await idbGet("blobs", m.id);
-      await idbDel("maps", m.id); await idbDel("blobs", m.id); MAPS = MAPS.filter((x) => x !== m); closeModal(); render();
+      await idbDel("maps", m.id); await idbDel("blobs", m.id); MAPS = MAPS.filter((x) => x !== m); if (S.sync && S.sync.on) { S.sync.mapDeleted = (S.sync.mapDeleted || []).concat([m.id]); save(); } closeModal(); render();
       toast(`«${m.name}» eliminata`, { label: "Annulla", run: async () => { await idbPut("blobs", blob, m.id); await saveMapMeta(m); render(); toast("Ripristinata"); } }); },
     mapScene: (el) => { const c = C(); const id = el.dataset.id; c.sceneMaps = c.sceneMaps || [];
       if (c.sceneMaps.includes(id)) c.sceneMaps = c.sceneMaps.filter((x) => x !== id); else c.sceneMaps.unshift(id);

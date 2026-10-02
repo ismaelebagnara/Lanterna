@@ -1,5 +1,5 @@
 // Service worker: tiene l'app disponibile offline e riceve le immagini condivise da altre app.
-const CACHE = "lanterna-v13";
+const CACHE = "lanterna-v14";
 const FILES = ["./", "./index.html", "./styles.css", "./app.js", "./seed.js", "./srd.js", "./rules.js", "./gen.js", "./manifest.webmanifest",
   "./fonts/Cinzel.ttf", "./fonts/CrimsonPro.ttf", "./fonts/CrimsonPro-Italic.ttf",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png"];

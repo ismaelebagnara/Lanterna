@@ -75,14 +75,14 @@ Serve solo per sfogliare e cercare la raccolta di mappe dentro l'app. Senza chia
 2. Menu → **API e servizi** → **Libreria**: cerca **Google Drive API** e premi **Abilita**.
 3. **API e servizi** → **Credenziali** → **Crea credenziali** → **Chiave API**. Copia la chiave (inizia con `AIza`).
 4. Apri la chiave e proteggila: in **Restrizioni delle applicazioni** scegli **Referrer HTTP (siti web)** e aggiungi `https://TUONOME.github.io/*`; in **Restrizioni API** scegli solo **Google Drive API**. Salva.
-5. In Lanterna: **Mappe** → **Raccolta** → **Inserisci la chiave API**. La chiave resta solo sul telefono.
+5. In Lanterna: **Mappe** → **Raccolta** → **Inserisci la chiave API**. La chiave resta sul telefono (e, se usi la sincronizzazione, nella cartella nascosta del tuo Drive).
 6. La prima volta premi **Crea l'indice**: legge l'elenco di tutte le cartelle (qualche minuto con migliaia di file) e da lì la ricerca è istantanea. Rifallo solo se il venditore aggiunge mappe.
 
 La chiave funziona perché le cartelle del pacchetto sono condivise con "chiunque abbia il link". Se un giorno il venditore le rende private, la ricerca smette di funzionare, ma le mappe già salvate tra le tue restano.
 
 ## Più dispositivi: sincronizzazione con Google Drive (facoltativa, gratis)
 
-Le campagne restano uguali su telefono, tablet e computer. L'app le salva in una cartella **nascosta** del tuo Drive, che può leggere solo Lanterna: non vede gli altri tuoi file, e tu non la vedi tra i file di Drive. Le immagini delle mappe restano sul dispositivo.
+Le campagne restano uguali su telefono, tablet e computer. L'app le salva in una cartella **nascosta** del tuo Drive, che può leggere solo Lanterna: non vede gli altri tuoi file, e tu non la vedi tra i file di Drive. Si sincronizzano le campagne, le mappe salvate (immagini, segni e nebbia), la mappa del mondo, la Raccolta collegata e la chiave API. Restano su ogni dispositivo solo l'indice di ricerca della Raccolta (premi «Crea l'indice» sul nuovo dispositivo) e le preferenze.
 
 Serve un "ID client OAuth", da creare una volta sola nello stesso progetto Google Cloud della chiave API:
 
@@ -101,7 +101,8 @@ Come funziona poi:
 - Quando apri l'app scarica le novità; quando modifichi qualcosa, salva su Drive dopo qualche secondo.
 - La **nuvola** in alto mostra lo stato: verde = sincronizzato, gialla = tocca per riconnetterti (l'accesso di Google dura un'ora; quando scade basta un tocco), rossa = c'è un problema o una scelta da fare. Durante una sessione la nuvola verde si nasconde per fare spazio.
 - Se la stessa campagna è stata modificata su due dispositivi prima di sincronizzarsi, l'app chiede quale tenere (o tiene entrambe come copie). Niente viene sovrascritto in silenzio.
-- Se elimini una campagna, sugli altri dispositivi ti chiede se eliminarla anche lì.
+- Se elimini una campagna, sugli altri dispositivi ti chiede se eliminarla anche lì. Una mappa eliminata sparisce da tutti i dispositivi.
+- Le mappe occupano spazio nel tuo Drive (i 15 GB gratuiti): la prima sincronizzazione con tante mappe può richiedere qualche minuto.
 
 ## Attenzione ai segreti
 
