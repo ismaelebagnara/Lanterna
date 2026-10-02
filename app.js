@@ -1144,12 +1144,12 @@
   async function pushCamp(c, f) {
     const cfg = syncCfg(); const h = campHash(c);
     const up = await driveUpload(f && f.id, `campagna-${c.id}.json`, { kind: "lanterna-campaign", version: 1, savedAt: Date.now(), device: deviceName(), campaign: c }, { cid: c.id, h, cname: String(c.name).slice(0, 90), device: deviceName().slice(0, 60) });
-    cfg.base[c.id] = { fid: up.id, ver: String(up.version), hash: h, at: Date.now() };
+    cfg.base[c.id] = { fid: up.id, rh: h, hash: h, at: Date.now() };
   }
   async function pullCamp(f) {
     const cfg = syncCfg(); const d = await driveGet(f.id); const c = d.campaign; if (!c || !c.id) throw new Error("File di Drive non valido");
     migrate({ campaigns: { x: c } }); S.campaigns[c.id] = c; if (!S.activeId) S.activeId = c.id;
-    cfg.base[c.id] = { fid: f.id, ver: String(f.version), hash: campHash(c), at: Date.now() };
+    cfg.base[c.id] = { fid: f.id, rh: (f.appProperties && f.appProperties.h) || "", hash: campHash(c), at: Date.now() };
     return c;
   }
   // confronta ogni campagna con l'ultima versione sincronizzata e decide chi ha ragione
@@ -1166,8 +1166,9 @@
         const f = byCid[c.id]; const base = cfg.base[c.id]; const localCh = !base || base.hash !== campHash(c);
         if (!f) { if (base) conflicts.push({ c, gone: true }); else { await pushCamp(c, null); up++; } continue; }
         const same = f.appProperties && f.appProperties.h === campHash(c);
-        if (same) { cfg.base[c.id] = { fid: f.id, ver: String(f.version), hash: campHash(c), at: Date.now() }; continue; }
-        const remoteCh = !base || String(f.version) !== base.ver || base.fid !== f.id;
+        if (same) { cfg.base[c.id] = { fid: f.id, rh: f.appProperties.h, hash: campHash(c), at: Date.now() }; continue; }
+        const rh = (f.appProperties && f.appProperties.h) || ""; const seen = base && (base.rh !== undefined ? base.rh : base.hash);
+        const remoteCh = !base || rh !== seen;
         if (localCh && remoteCh) conflicts.push({ c, f });
         else if (localCh) { await pushCamp(c, f); up++; }
         else if (remoteCh) { await pullCamp(f); down++; }
@@ -1177,7 +1178,9 @@
       cfg.last = Date.now(); SY.conflicts = conflicts;
       save(true); if (down) render();
       if (opts.verbose || down) toast(down ? `Sincronizzato: ${down} novità da Drive` : up ? "Salvato su Drive" : "Già tutto sincronizzato");
-      if (conflicts.length) syncConflict();
+      SY.asked = SY.asked || new Set(); const fresh = conflicts.filter((k) => !SY.asked.has(k.c.id + ":" + (k.gone ? "gone" : k.f.appProperties && k.f.appProperties.h)));
+      fresh.forEach((k) => SY.asked.add(k.c.id + ":" + (k.gone ? "gone" : k.f.appProperties && k.f.appProperties.h)));
+      if (conflicts.length && (opts.verbose || fresh.length)) syncConflict(); // una domanda sola: se chiudi senza scegliere, la nuvola resta rossa finché non la tocchi
     } catch (e) { SY.err = e.auth ? "auth" : e.message; if (!e.auth || opts.verbose) toast(e.auth ? "Tocca la nuvola per riconnetterti a Google" : "Sincronizzazione non riuscita: " + e.message); }
     finally { SY.busy = false; syncUI(); }
   }
@@ -1219,7 +1222,7 @@
     const cfg = syncCfg(); cfg.mapDeleted = cfg.mapDeleted || [];
     const idxF = files.find((f) => f.name === "mappe-indice.json");
     const blobF = {}; files.forEach((f) => { const mm = f.name.match(/^mappa-(.+)\.bin$/); if (mm) blobF[mm[1]] = f; });
-    const remoteCh = !!idxF && String(idxF.version) !== cfg.mapVer;
+    const remoteCh = !!idxF && ((idxF.appProperties && idxF.appProperties.h) || "") !== cfg.mapRh;
     const localCh = mapSig() !== cfg.mapSig || setSig() !== cfg.setSig || cfg.mapDeleted.length > 0;
     if (!remoteCh && !localCh && (idxF || !MAPS.length)) return { up: 0, down: 0 };
     const R = idxF ? await driveGet(idxF.id) : {}; R.kind = "lanterna-maps-sync"; R.maps = R.maps || {}; R.deleted = R.deleted || [];
@@ -1248,7 +1251,7 @@
     if (ls !== cfg.setSig) { R.settings = { mapLib: S.settings.mapLib || null, driveKey: S.settings.driveKey || "" }; R.setSig = ls; changed = true; }
     else if (R.setSig && R.setSig !== cfg.setSig && R.settings) { S.settings.mapLib = R.settings.mapLib; S.settings.driveKey = R.settings.driveKey; DRV.cache = {}; down++; }
     cfg.setSig = setSig();
-    if (changed) { const u = await driveUpload(idxF && idxF.id, "mappe-indice.json", R, { kind: "maps" }); cfg.mapVer = String(u.version); } else cfg.mapVer = String(idxF.version);
+    if (changed) { const h = campHash(R); await driveUpload(idxF && idxF.id, "mappe-indice.json", R, { kind: "maps", h }); cfg.mapRh = h; } else cfg.mapRh = (idxF.appProperties && idxF.appProperties.h) || "";
     cfg.mapSig = mapSig();
     return { up, down };
   }
