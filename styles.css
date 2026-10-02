@@ -514,3 +514,11 @@ textarea.inl { resize: none; overflow: hidden; line-height: 1.35; min-height: 30
 .gengroup { display: grid; grid-template-columns: 62px 1fr; align-items: start; gap: 6px; }
 .gengroup > span { font-family: "Cinzel", serif; font-size: .62rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding-top: 9px; }
 .gengroup .chips { margin: 0; }
+.genres .genread { font-size: 1.08rem; font-style: italic; margin: 8px 0 4px; color: var(--ink); line-height: 1.45; }
+.genres dt.gmonly { color: var(--fear); }
+.genadv { margin-top: 10px; display: grid; gap: 4px; }
+.genadv > span { font-family: "Cinzel", serif; font-size: .62rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.genadv .chips { margin: 0; }
+.genkinds { flex-wrap: nowrap; align-items: center; margin-bottom: 4px; }
+.genkinds .gsep { flex: none; font-family: "Cinzel", serif; font-size: .58rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 0 2px 0 8px; border-left: 1px solid var(--line); }
+.genkinds .gsep:first-child { border-left: 0; padding-left: 0; }
