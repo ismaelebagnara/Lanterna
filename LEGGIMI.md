@@ -54,7 +54,7 @@ Una PWA va servita da un indirizzo web https; dopo la prima apertura funziona an
 2. Crea un nuovo repository pubblico, per esempio `lanterna`.
 3. "Add file" → "Upload files" e trascina **tutto il contenuto** di questa cartella (index.html, app.js, cartelle fonts e icons comprese). Conferma.
 4. Settings → Pages → Source: "Deploy from a branch", branch `main`, cartella `/ (root)`. Salva.
-5. Dopo un minuto l'app è su `https://TUONOME.github.io/lanterna/`.
+5. Dopo un minuto l'app è su `https://TUONOME.github.io/NomeRepo/` (maiuscole comprese: il percorso distingue maiuscole e minuscole).
 
 ### 2. Installarla su Android
 1. Apri quell'indirizzo con **Chrome**.
