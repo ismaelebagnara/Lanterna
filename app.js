@@ -372,7 +372,7 @@
     $("#fab").hidden = false;
     const r = route();
     const V = { tavolo: viewTable, scontro: viewCombat, bestiario: viewBestiary, mondo: viewWorld, mappe: viewMaps, diario: viewJournal }[r.tab] || viewTable;
-    main.innerHTML = V(c, r.sub, r.id); updateLiveUI(); $$("textarea.inl", main).forEach(autoGrow);
+    main.innerHTML = V(c, r.sub, r.id); if (r.tab === "mondo" && r.sub === "mappa") atlasMount(); updateLiveUI(); $$("textarea.inl", main).forEach(autoGrow);
     window.scrollTo(0, y);
   }
 
@@ -829,11 +829,12 @@
 
   function viewWorld(c, sub) {
     if (sub === "rivedi") return viewReview(c);
+    if (sub === "mappa") return viewAtlas(c);
     const nrev = reviewItems(c).length;
     const q = filters.worldQ.toLowerCase();
     const list = c.world.filter((w) => (!filters.worldKind || w.kind === filters.worldKind) && (!q || [w.name, w.subtitle, w.tags, w.notes].join(" ").toLowerCase().includes(q)))
       .sort((a, b) => a.name.localeCompare(b.name));
-    return `${nrev ? `<button class="revbar" data-a="go" data-tab="mondo" data-sub="rivedi"><b>${nrev}</b> ${nrev === 1 ? "voce" : "voci"} da confermare<span class="chev">›</span></button>` : ""}<div class="sechead"><h2>Mondo</h2><button class="btn small" data-a="newWorld">+ Voce</button></div>
+    return `${nrev ? `<button class="revbar" data-a="go" data-tab="mondo" data-sub="rivedi"><b>${nrev}</b> ${nrev === 1 ? "voce" : "voci"} da confermare<span class="chev">›</span></button>` : ""}<div class="sechead"><h2>Mondo</h2><div class="row gap"><button class="btn small ghost" data-a="go" data-tab="mondo" data-sub="mappa">🗺 Mappa</button><button class="btn small" data-a="newWorld">+ Voce</button></div></div>
       <div class="chips">${[["", "Tutto"]].concat(Object.entries(WORLD_KINDS)).map(([k, v]) => `<button class="chip ${filters.worldKind === k ? "on" : ""}" data-a="worldKind" data-k="${k}">${v}</button>`).join("")}</div>
       <div class="filters"><input type="search" placeholder="Cerca nomi, tag e appunti" value="${esc(filters.worldQ)}" data-a="filter" data-k="worldQ"></div>
       ${list.length ? `<div class="list">${list.map((w) => `<button class="listrow" data-a="viewWorld" data-id="${w.id}"><div><b>${esc(w.name)}</b>${revTag(w)}<div class="sub">${WORLD_ONE[w.kind] || ""}${w.subtitle ? " · " + esc(w.subtitle) : ""}${w.tags ? " · " + esc(w.tags) : ""}</div></div><span class="chev">›</span></button>`).join("")}</div>`
@@ -1149,9 +1150,9 @@
       const old = S.settings.mapLib; S.settings.mapLib = obj.lib; if (old && old.folders) old.folders.forEach((f) => { if (!obj.lib.folders.some((x) => x.id === f.id)) obj.lib.folders.push(f); });
       save(); closeModal(); go("mappe", "raccolta"); render(); toast(`Raccolta collegata: ${obj.lib.folders.length} categorie`); return;
     } else if (obj && obj.kind === "lanterna-pack") {
-      const n = ["world", "pcs", "clocks", "encounters", "sessions", "bestiary", "environments", "tables"].reduce((t, k) => t + (obj[k] || []).length, 0);
+      const n = ["world", "pcs", "clocks", "encounters", "sessions", "bestiary", "environments", "tables"].reduce((t, k) => t + (obj[k] || []).length, 0) + (obj.atlas ? (obj.atlas.pins || []).length : 0);
       const cur = C();
-      const run = (c) => { const r = mergePack(c, obj); save(); closeModal(); if ((obj.world || []).length) go("mondo", "rivedi"); else if ((obj.bestiary || []).length) go("bestiario"); render();
+      const run = async (c) => { const r = mergePack(c, obj); if (obj.atlas) { closeModal(); toast("Salvo la mappa…"); try { const q = await importAtlas(c, obj.atlas); r.add += q.made; toast(`Mappa del mondo pronta: ${q.put} luoghi segnati${q.made ? `, ${q.made} nuovi da confermare` : ""}`); } catch (e) { toast("Mappa non importata: " + e.message); } save(); go("mondo", "mappa"); render(); return; } save(); closeModal(); if ((obj.world || []).length) go("mondo", "rivedi"); else if ((obj.bestiary || []).length) go("bestiario"); render();
         toast(`${r.add} voci aggiunte${r.skip ? `, ${r.skip} già presenti (saltate)` : ""}`); };
       openModal(obj.name || "Pacchetto di contenuti", `<p>${esc(obj.desc || "")}</p><p class="sub">${n} voci. Quelle con un nome già presente vengono saltate, niente viene sovrascritto.</p>`,
         { focus: false, extra: `<button class="btn ghost" data-a="packNew">In una nuova campagna</button>${cur ? `<button class="btn primary" data-a="packHere">Aggiungi a «${esc(cur.name)}»</button>` : ""}` });
@@ -1399,6 +1400,140 @@
   }
   let vSaveT = null;
   function vSave() { clearTimeout(vSaveT); vSaveT = setTimeout(() => saveMapMeta(VW.m).then(() => render()), 300); }
+
+  // ---- atlante: la mappa del mondo con i luoghi della campagna
+  const AT = { s: 1, x: 0, y: 0, sel: null, place: null, url: null, urlId: null, key: "", focus: null, allKinds: false };
+  const atlasMap = (c) => (c.atlas && c.atlas.mapId ? mapById(c.atlas.mapId) : null);
+  const plainNotes = (t, n = 170) => { const s0 = String(t || "").replace(/\[\[([^\]\n]+)\]\]/g, "$1").replace(/\s+/g, " ").trim(); return s0.length > n ? s0.slice(0, n).replace(/\s\S*$/, "") + "…" : s0; };
+  function atlasLinks(c, w) {
+    const out = []; const seen = new Set(); const add = (kind, id, name, r) => { const k = kind + ":" + id; if (seen.has(k) || (kind === "world" && id === w.id)) return; seen.add(k); out.push({ kind, id, name, r: r || "" }); };
+    (w.rels || []).forEach((r) => { const n = entLabel(r.kind, r.id); if (n) add(r.kind, r.id, n, r.r); });
+    [["pc", c.pcs], ["world", c.world]].forEach(([k, arr]) => arr.forEach((y) => (y.rels || []).forEach((r) => { if (r.kind === "world" && r.id === w.id) add(k, y.id, y.name, r.r); })));
+    mentionsIn(w.notes).forEach((key) => { const [kind, id] = key.split(":"); const n = entLabel(kind, id); if (n) add(kind, id, n, ""); });
+    backlinksOf("world", w.id).forEach((b) => add(b.kind, b.id, b.name, ""));
+    return out;
+  }
+  const pinHtml = (w, p) => `<button class="apin k-${w.kind} ${AT.sel === w.id ? "on" : ""}" data-pin="${w.id}" style="left:${(p[0] * 100).toFixed(3)}%;top:${(p[1] * 100).toFixed(3)}%"><i></i><span>${esc(bareName(w.name))}</span></button>`;
+  function atlasInfo(c) {
+    const w = AT.sel && c.world.find((x) => x.id === AT.sel);
+    if (!w) return `<p class="sub center">Tocca un luogo sulla mappa per vedere chi e cosa è collegato.</p>`;
+    const pins = (c.atlas && c.atlas.pins) || {};
+    const links = atlasLinks(c, w);
+    const ms = MAPS.filter((m) => (m.place || "").toLowerCase() === w.name.toLowerCase() && m.id !== c.atlas.mapId);
+    return `<article class="card atinfo"><header class="row between"><div><h3>${esc(w.name)}</h3><div class="sub">${WORLD_ONE[w.kind] || ""}${w.subtitle ? " · " + esc(w.subtitle) : ""}</div></div><button class="btn small" data-a="viewWorld" data-id="${w.id}">Scheda</button></header>
+      ${w.notes ? `<p class="sub">${esc(plainNotes(w.notes))}</p>` : ""}
+      ${links.length ? `<h4>Collegati</h4><div class="chips">${links.map((o) => `<button class="chip ${o.kind === "world" && pins[o.id] ? "onmap" : ""}" data-a="atlasGo" data-kind="${o.kind}" data-id="${o.id}">${o.r ? `<i>${esc(o.r)}</i> ` : ""}${esc(o.name)}</button>`).join("")}</div>` : `<p class="sub">Ancora nessun collegamento. Aggiungi un Legame dalla scheda, o nomina il luogo negli appunti di PNG e sessioni.</p>`}
+      ${ms.length ? `<h4>Mappe del luogo</h4><div class="chips">${ms.map((m) => `<button class="chip" data-a="mapView" data-id="${m.id}">🗺 ${esc(m.name)}</button>`).join("")}</div>` : ""}
+      <div class="row gap wrap"><button class="btn small ghost" data-a="atlasPlace" data-id="${w.id}">Sposta</button><button class="btn small ghost" data-a="atlasUnpin" data-id="${w.id}">Togli dalla mappa</button></div></article>`;
+  }
+  function viewAtlas(c) {
+    const head = `<div class="sechead"><h2>Mappa del mondo</h2><button class="btn small ghost" data-a="go" data-tab="mondo">☰ Elenco</button></div>`;
+    if (!mapsLoaded) { loadMaps().then(render); return head + `<p class="sub center">Carico la mappa…</p>`; }
+    const at = c.atlas; const m = atlasMap(c);
+    if (!m) return head + `<section class="empty"><h3>${at && at.mapId ? "Immagine non trovata" : "La mappa della campagna"}</h3><p>${at && at.mapId
+      ? "L'immagine della mappa non è su questo telefono: i backup salvano i luoghi ma non le immagini. Caricala di nuovo e i luoghi tornano dove li avevi messi."
+      : "Carica la mappa dell'ambientazione, anche una foto, e appoggiaci sopra i luoghi del Mondo. Toccando un luogo vedi chi e cosa vi è collegato."}</p>
+      <div class="row gap center-row"><button class="btn primary" data-a="atlasUpload">Carica un'immagine</button>${MAPS.length ? `<button class="btn" data-a="atlasPickMap">Scegli dalle mie mappe</button>` : ""}</div></section>`;
+    const pins = at.pins || {};
+    const placed = c.world.filter((w) => pins[w.id]);
+    const todo = c.world.filter((w) => !pins[w.id] && (AT.allKinds || w.kind === "luogo")).sort((a, b) => bareName(a.name).localeCompare(bareName(b.name)));
+    const pw = AT.place && c.world.find((x) => x.id === AT.place);
+    return head + `<div class="stage at ${pw ? "placing" : ""}" id="atStage"><div class="layer" id="atLayer"><img id="atImg" src="${AT.urlId === m.id ? AT.url : ""}" alt="" draggable="false"><svg id="atLines" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>${placed.map((w) => pinHtml(w, pins[w.id])).join("")}</div>
+        <button class="atfit" data-a="atlasFit" title="Adatta">⤢</button></div>
+      ${pw ? `<div class="placebar"><span>Tocca la mappa dove si trova <b>${esc(pw.name)}</b></span><button class="btn small ghost" data-a="atlasCancel">Annulla</button></div>` : ""}
+      <div id="atInfo">${atlasInfo(c)}</div>
+      <div class="sechead"><h3>Da mettere sulla mappa</h3><button class="btn small ghost" data-a="atlasNewPlace">+ Luogo</button></div>
+      ${todo.length ? `<div class="chips">${todo.map((w) => `<button class="chip ${AT.place === w.id ? "on" : ""}" data-a="atlasPlace" data-id="${w.id}">${esc(w.name)}</button>`).join("")}</div>` : `<p class="sub">${placed.length ? "Tutti i luoghi sono sulla mappa." : "Nessun luogo nel Mondo: creane uno con «+ Luogo»."}</p>`}
+      <label class="chk"><input type="checkbox" data-a="atlasKinds" ${AT.allKinds ? "checked" : ""}> Mostra anche PNG, fazioni, oggetti e lore</label>
+      <details class="logdet"><summary>Immagine della mappa</summary><div class="row gap wrap">
+        <button class="btn small" data-a="mapView" data-id="${m.id}">Apri e invia ai giocatori</button>
+        <button class="btn small ghost" data-a="atlasUpload">Cambia immagine</button>
+        <button class="btn small ghost" data-a="atlasRemove">Togli la mappa</button></div>
+        <p class="sub">Inviando la mappa i segnaposto dei luoghi non compaiono: decidi tu cosa mostrare con penna e nebbia.</p></details>`;
+  }
+  function atlasApply() {
+    const L = $("#atLayer"); if (!L) return;
+    L.style.transform = `translate(${AT.x}px, ${AT.y}px) scale(${AT.s})`; L.style.setProperty("--inv", (1 / AT.s).toFixed(4));
+  }
+  function atlasFit() {
+    const c = C(); const m = atlasMap(c); const st = $("#atStage"); if (!m || !st) return;
+    const bw = st.clientWidth; const bh = Math.round(Math.min(window.innerHeight * 0.62, bw * m.h / m.w)); st.style.height = bh + "px";
+    const k = Math.min(bw / m.w, bh / m.h); const L = $("#atLayer"); L.style.width = m.w * k + "px"; L.style.height = m.h * k + "px";
+    AT.lw = m.w * k; AT.lh = m.h * k; AT.bw = bw; AT.bh = bh; AT.s = 1; AT.x = (bw - AT.lw) / 2; AT.y = (bh - AT.lh) / 2; atlasApply();
+  }
+  function atlasLines() {
+    const svg = $("#atLines"); if (!svg) return; const c = C(); const pins = (c.atlas && c.atlas.pins) || {};
+    const w = AT.sel && c.world.find((x) => x.id === AT.sel); const p0 = w && pins[w.id];
+    $$("#atLayer .apin").forEach((b) => { b.classList.toggle("on", b.dataset.pin === AT.sel); b.classList.remove("rel"); });
+    if (!p0) { svg.innerHTML = ""; return; }
+    const ends = atlasLinks(c, w).filter((o) => o.kind === "world" && pins[o.id]);
+    ends.forEach((o) => { const b = $(`#atLayer .apin[data-pin="${o.id}"]`); if (b) b.classList.add("rel"); });
+    svg.innerHTML = ends.map((o) => { const p = pins[o.id]; return `<line x1="${p0[0] * 1000}" y1="${p0[1] * 1000}" x2="${p[0] * 1000}" y2="${p[1] * 1000}" vector-effect="non-scaling-stroke"/>`; }).join("");
+  }
+  function atlasSelect(id) {
+    AT.sel = id; const box = $("#atInfo"); if (box) box.innerHTML = atlasInfo(C()); atlasLines();
+  }
+  function atlasCenter(id) {
+    const c = C(); const p = c.atlas && c.atlas.pins && c.atlas.pins[id]; if (!p || !AT.lw) return;
+    const s = Math.max(AT.s, 2.2); AT.s = s; AT.x = AT.bw / 2 - p[0] * AT.lw * s; AT.y = AT.bh / 2 - p[1] * AT.lh * s; atlasApply();
+  }
+  function atlasMount() {
+    const c = C(); const m = atlasMap(c); const st = $("#atStage"); if (!m || !st) return;
+    const img = $("#atImg");
+    if (AT.urlId !== m.id) idbGet("blobs", m.id).then((b) => { if (!b) return; if (AT.url) URL.revokeObjectURL(AT.url); AT.url = URL.createObjectURL(b); AT.urlId = m.id; const i = $("#atImg"); if (i) i.src = AT.url; });
+    const key = m.id + "|" + st.clientWidth;
+    if (AT.key !== key) { AT.key = key; atlasFit(); }
+    else { const L = $("#atLayer"); st.style.height = AT.bh + "px"; L.style.width = AT.lw + "px"; L.style.height = AT.lh + "px"; atlasApply(); }
+    if (AT.focus) { AT.sel = AT.focus; atlasCenter(AT.focus); AT.focus = null; const box = $("#atInfo"); if (box) box.innerHTML = atlasInfo(c); setTimeout(() => window.scrollTo(0, 0), 80); }
+    atlasLines(); void img;
+    const P = new Map(); let pinch = null, pan = null, down = null;
+    st.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".atfit")) return;
+      st.setPointerCapture(e.pointerId); P.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (P.size === 2) { const [a, b] = [...P.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: AT.s, x: AT.x, y: AT.y, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 }; pan = null; down = null; return; }
+      pan = { x: e.clientX, y: e.clientY, ox: AT.x, oy: AT.y }; down = { x: e.clientX, y: e.clientY, t: Date.now(), el: e.target };
+    });
+    st.addEventListener("pointermove", (e) => {
+      if (!P.has(e.pointerId)) return; P.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && P.size >= 2) { const [a, b] = [...P.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); const s = clamp(pinch.s * d / pinch.d, 1, 10);
+        const r = st.getBoundingClientRect(); const cx = pinch.cx - r.left, cy = pinch.cy - r.top; const ncx = (a.x + b.x) / 2 - r.left, ncy = (a.y + b.y) / 2 - r.top;
+        AT.x = ncx - (cx - pinch.x) * s / pinch.s; AT.y = ncy - (cy - pinch.y) * s / pinch.s; AT.s = s; atlasApply(); return; }
+      if (pan) { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) down = null; AT.x = pan.ox + e.clientX - pan.x; AT.y = pan.oy + e.clientY - pan.y; atlasApply(); }
+    });
+    const up = (e) => {
+      const tap = down && P.size === 1 && Date.now() - down.t < 600 ? down : null;
+      P.delete(e.pointerId); if (P.size < 2) pinch = null; if (!P.size) pan = null; down = null;
+      if (!tap) return;
+      const pinEl = tap.el.closest && tap.el.closest(".apin");
+      if (AT.place) {
+        const r = $("#atImg").getBoundingClientRect(); const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        if (x < 0 || x > 1 || y < 0 || y > 1) return;
+        const id = AT.place; const cc = C(); cc.atlas.pins = cc.atlas.pins || {}; cc.atlas.pins[id] = [+x.toFixed(4), +y.toFixed(4)];
+        AT.place = null; AT.sel = id; save(); render(); return;
+      }
+      if (pinEl) atlasSelect(pinEl.dataset.pin === AT.sel ? null : pinEl.dataset.pin); else if (AT.sel) atlasSelect(null);
+    };
+    st.addEventListener("pointerup", up); st.addEventListener("pointercancel", (e) => { down = null; up(e); });
+    st.addEventListener("wheel", (e) => { e.preventDefault(); const r = st.getBoundingClientRect(); const s = clamp(AT.s * (e.deltaY < 0 ? 1.15 : 0.87), 1, 10); const cx = e.clientX - r.left, cy = e.clientY - r.top; AT.x = cx - (cx - AT.x) * s / AT.s; AT.y = cy - (cy - AT.y) * s / AT.s; AT.s = s; atlasApply(); }, { passive: false });
+  }
+  async function atlasSetImage(c, blob, name) {
+    const m = await addMapFromBlob(blob, name || "Mappa del mondo", { cat: "regione", caption: "Mappa del mondo" });
+    c.atlas = { mapId: m.id, pins: (c.atlas && c.atlas.pins) || {} }; AT.key = ""; save(); return m;
+  }
+  // pacchetto con mappa: { atlas: { name, image: "data:image/jpeg;base64,…", pins: [{ name, aliases, x, y, subtitle }] } }
+  async function importAtlas(c, A0) {
+    const blob = await (await fetch(A0.image)).blob();
+    await atlasSetImage(c, blob, A0.name);
+    const norm = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/^(?:(?:il|lo|la|i|gli|le|un|una|uno)\s+|l['’]\s*)/, "").replace(/[^a-z0-9]+/g, " ").trim();
+    let made = 0, put = 0;
+    (A0.pins || []).forEach((p) => {
+      const keys = [p.name].concat(p.aliases || []).map(norm);
+      let w = c.world.find((x) => [x.name].concat(String(x.aliases || "").split(",")).some((n) => keys.includes(norm(n))));
+      if (!w) { w = { id: uid(), kind: p.kind || "luogo", name: p.name, subtitle: p.subtitle || "", tags: "", notes: p.notes || "", review: { src: "manuale", q: "Segnato sulla mappa del manuale: tienilo, completalo o eliminalo." } }; c.world.push(w); made++; }
+      if (!c.atlas.pins[w.id]) { c.atlas.pins[w.id] = [p.x, p.y]; put++; }
+    });
+    save(); return { made, put };
+  }
 
   // ---- raccolta (link del PDF + Google Drive)
   const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
@@ -2121,6 +2256,26 @@
     sessionView: (el) => { const s = C().sessions.find((x) => x.id === el.dataset.id); if (!s) return;
       openModal((s.num ? "#" + s.num + " · " : "") + (s.title || "Sessione"), `${reviewBanner("session", s)}<div class="sub">${esc(s.date || "")}</div>${sessionBody(s).trim() || "<p class='sub'>Vuota.</p>"}`, { focus: false, extra: `<button class="btn primary" data-a="editSession" data-id="${s.id}">Modifica</button>` }); },
     open: (el) => openEntity(el.dataset.kind, el.dataset.id),
+
+    atlasUpload: () => {
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+      inp.addEventListener("change", async () => { const f = inp.files[0]; if (!f) return; toast("Salvo la mappa…");
+        try { await atlasSetImage(C(), f, f.name); render(); toast("Mappa del mondo pronta: ora appoggia i luoghi"); } catch (e) { toast("Immagine non leggibile"); } });
+      inp.click();
+    },
+    atlasPickMap: () => openModal("Scegli la mappa del mondo", `<div class="mapgrid">${MAPS.map((m) => `<button class="maptile" data-a="atlasUseMap" data-id="${m.id}"><img src="${turl(m)}" alt=""><span>${esc(m.name)}</span></button>`).join("")}</div>`, { focus: false }),
+    atlasUseMap: (el) => { const c = C(); c.atlas = { mapId: el.dataset.id, pins: (c.atlas && c.atlas.pins) || {} }; AT.key = ""; save(); closeModal(); render(); },
+    atlasRemove: () => withUndo("Mappa del mondo tolta (l'immagine resta nelle tue mappe)", (c) => { delete c.atlas; AT.sel = null; AT.place = null; }),
+    atlasFit: () => { atlasFit(); },
+    atlasKinds: () => { AT.allKinds = !AT.allKinds; render(); },
+    atlasPlace: (el) => { const id = el.dataset.id; closeModal(); AT.place = AT.place === id ? null : id; const r = route(); if (r.tab === "mondo" && r.sub === "mappa") { render(); if (AT.place) setTimeout(() => { const st = $("#atStage"); if (st) st.scrollIntoView({ block: "center", behavior: "smooth" }); }, 30); } else go("mondo", "mappa"); },
+    atlasCancel: () => { AT.place = null; render(); },
+    atlasShow: (el) => { closeModal(); AT.focus = el.dataset.id; const r = route(); if (r.tab === "mondo" && r.sub === "mappa") render(); else go("mondo", "mappa"); },
+    atlasUnpin: (el) => { const id = el.dataset.id; withUndo("Tolto dalla mappa", (c) => { if (c.atlas && c.atlas.pins) delete c.atlas.pins[id]; }); AT.sel = null; },
+    atlasGo: (el) => { const c = C(); const k = el.dataset.kind, id = el.dataset.id;
+      if (k === "world" && c.atlas && c.atlas.pins && c.atlas.pins[id]) { atlasSelect(id); atlasCenter(id); } else openEntity(k, id); },
+    atlasNewPlace: () => { const before = new Set(C().world.map((x) => x.id)); worldEditor(null, "luogo");
+      const t = setInterval(() => { if ($("#modal") && !$("#modal").hidden) return; clearInterval(t); const nw = C().world.find((x) => !before.has(x.id)); if (nw) { AT.place = nw.id; render(); toast("Ora tocca la mappa dove si trova"); } }, 300); },
     link: (el) => { const name = el.dataset.name; const hit = resolveLink(name);
       if (hit) return openEntity(hit.kind, hit.id);
       openModal(name, `<p>«${esc(name)}» non esiste ancora nella campagna. Vuoi crearlo nel Mondo?</p><div class="chips">${Object.entries(WORLD_ONE).map(([k, v]) => `<button class="chip" data-a="linkCreate" data-kind="${k}" data-name="${esc(name)}">${v}</button>`).join("")}</div>`, { focus: false }); },
@@ -2327,7 +2482,7 @@
     worldKind: (el) => { filters.worldKind = el.dataset.k; render(); },
     viewWorld: (el) => { const w = C().world.find((x) => x.id === el.dataset.id); if (!w) return; richSkip = w.id;
       openModal(w.name, `${reviewBanner("world", w)}<div class="sub">${WORLD_ONE[w.kind] || ""}${w.subtitle ? " · " + esc(w.subtitle) : ""}</div>${w.tags ? `<div class="chips">${w.tags.split(",").map((t) => t.trim()).filter(Boolean).map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}<p class="notes">${rich(w.notes || "Nessun appunto.")}</p>${w.kind === "luogo" ? (() => { const ms = MAPS.filter((m) => (m.place || "").toLowerCase() === w.name.toLowerCase()); return `<h4>Mappe</h4>${mapThumbs(C(), ms, `<p class="sub">Nessuna mappa collegata.</p>`)}<button class="btn small ghost" data-a="mapPickFor" data-for="place" data-id="${w.id}">+ Collega una mappa</button>`; })() : ""}${linksBlock("world", w)}`,
-        { focus: false, extra: `${(() => { const n = w.name.toLowerCase(); const a = allAdv(C()).find((x) => { const m = x.name.toLowerCase(); return m === n || m.startsWith(n + ",") || m.startsWith(n + " ("); }); return a ? `<button class="btn ghost" data-a="viewAdv" data-id="${a.id}">Scheda avversario</button>` : ""; })()}<button class="btn primary" data-a="editWorld" data-id="${w.id}">Modifica</button>` }); richSkip = null; },
+        { focus: false, extra: `${(() => { const n = w.name.toLowerCase(); const a = allAdv(C()).find((x) => { const m = x.name.toLowerCase(); return m === n || m.startsWith(n + ",") || m.startsWith(n + " ("); }); return a ? `<button class="btn ghost" data-a="viewAdv" data-id="${a.id}">Scheda avversario</button>` : ""; })()}${C().atlas && C().atlas.pins && C().atlas.pins[w.id] ? `<button class="btn ghost" data-a="atlasShow" data-id="${w.id}">🗺 Sulla mappa</button>` : C().atlas && w.kind === "luogo" ? `<button class="btn ghost" data-a="atlasPlace" data-id="${w.id}">🗺 Metti sulla mappa</button>` : ""}<button class="btn primary" data-a="editWorld" data-id="${w.id}">Modifica</button>` }); richSkip = null; },
     editWorld: (el) => worldEditor(C().world.find((x) => x.id === el.dataset.id)),
     delWorld: (el) => { closeModal(); withUndo("Voce eliminata", (c) => { c.world = c.world.filter((x) => x.id !== el.dataset.id); }); },
 

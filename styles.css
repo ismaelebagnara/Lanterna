@@ -483,3 +483,21 @@ textarea.inl { resize: none; overflow: hidden; line-height: 1.35; min-height: 30
 .chip.rel i, .chip.rel.in i { color: var(--ember-2); font-style: normal; font-size: .8rem; }
 .chip.rel .relx { background: none; border: 0; color: var(--muted); font-size: 1.1rem; padding: 0 6px; }
 .chip.rel.in { color: var(--ink); border-style: dashed; }
+
+/* ---- mappa del mondo */
+.stage.at { flex: none; height: 300px; margin: 4px 0 10px; border: 1px solid var(--line); }
+.stage.at.placing { border-color: var(--ember); box-shadow: 0 0 0 2px rgba(212, 88, 58, .35); cursor: crosshair; }
+#atLines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+#atLines line { stroke: var(--hope); stroke-width: 2.5; stroke-dasharray: 6 5; opacity: .9; }
+.apin { position: absolute; width: 0; height: 0; padding: 0; border: 0; background: none; transform: scale(var(--inv, 1)); transform-origin: 0 0; z-index: 1; }
+.apin i { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%; background: var(--ember); border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .7); }
+.apin.k-png i { background: var(--fear); } .apin.k-fazione i { background: var(--hope); } .apin.k-oggetto i, .apin.k-lore i { background: var(--stress); }
+.apin span { position: absolute; left: 0; top: 11px; transform: translateX(-50%); white-space: nowrap; font: 600 11px/1.2 "Crimson Pro", Georgia, serif; color: #fff; background: rgba(15, 11, 8, .78); padding: 1px 6px; border-radius: 6px; pointer-events: none; }
+.apin.on { z-index: 3; } .apin.on i { transform: scale(1.35); background: var(--ember-2); box-shadow: 0 0 0 5px rgba(240, 122, 79, .35), 0 1px 4px rgba(0, 0, 0, .7); }
+.apin.on span { background: var(--ember); }
+.apin.rel { z-index: 2; } .apin.rel i { border-color: var(--hope); } .apin.rel span { color: var(--hope); }
+.atfit { position: absolute; right: 8px; bottom: 8px; z-index: 4; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line); background: rgba(31, 25, 20, .9); color: var(--ink); font-size: 1.1rem; }
+.placebar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; margin-bottom: 10px; border-radius: 10px; background: rgba(212, 88, 58, .14); border: 1px solid var(--ember); }
+.atinfo h3 { margin: 0; }
+.atinfo h4 { margin: 10px 0 4px; }
+.chip.onmap::before { content: "◉ "; color: var(--hope); }
