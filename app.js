@@ -2192,7 +2192,8 @@
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const GEN_KINDS = [["png", "PNG"], ["nome", "Nome"], ["diceria", "Diceria"], ["evento", "Evento"], ["tempo", "Tempo"], ["locanda", "Locanda"], ["bottino", "Bottino"], ["consumabile", "Consumabile"]];
   const RARITY = [["comune", "Comune", 1], ["noncomune", "Non comune", 2], ["raro", "Raro", 3], ["leggendario", "Leggendario", 4]];
-  const genState = { kind: "png", culture: "", rarity: "comune", last: null };
+  const genState = { kind: "png", culture: "", rarity: "comune", table: "tutte", last: null };
+  const LOOT_TABLES = [["tutte", "Tutte"], ["base", "Manuale base"], ["agg", "Aggiuntiva SRD 2.0"]];
   const genName = (cult) => { const cs = Object.keys(GEN.cultures); const k = cult || pick(cs); return { name: pick(GEN.cultures[k].names) + (Math.random() < 0.55 ? " " + pick(GEN.epithets) : ""), culture: GEN.cultures[k].label.replace(/ \(.*\)$/, "") }; };
   function genRoll(kind) {
     const N = GEN.npc;
@@ -2204,8 +2205,11 @@
     if (kind === "locanda") return { kind, title: `${pick(GEN.locande.a)} ${pick(GEN.locande.b)}`, lines: [["Oste", genName("").name], ["Specialità", pick(["zuppa di radici", "birra scura di palude", "pane nero e cipolle", "stufato di non chiedete cosa", "vino annacquato", "focaccia alle erbe amare"])], ["Chi c'è stasera", pick(N.mestiere)]] };
     if (kind === "bottino" || kind === "consumabile") {
       const r = RARITY.find((x) => x[0] === genState.rarity) || RARITY[0]; const dice = Array.from({ length: r[2] }, () => rnd(12)); const tot = dice.reduce((a, b) => a + b, 0);
-      const tab = kind === "bottino" ? GEN.loot.oggetti : GEN.loot.consumabili; const it = tab.find((x) => x.roll === tot) || tab[0];
-      return { kind, title: it.name, sub: `${r[1]} · ${r[2]}d12 = ${dice.join(" + ")}${r[2] > 1 ? " = " + tot : ""} · ${it.en}`, lines: [["", it.text]] };
+      // due tabelle con gli stessi tiri: con "Tutte" una moneta sceglie quale usare
+      const hasAgg = !!(GEN.loot.oggetti2 && GEN.loot.consumabili2);
+      const agg = hasAgg && (genState.table === "agg" || (genState.table === "tutte" && Math.random() < 0.5));
+      const tab = kind === "bottino" ? (agg ? GEN.loot.oggetti2 : GEN.loot.oggetti) : (agg ? GEN.loot.consumabili2 : GEN.loot.consumabili); const it = tab.find((x) => x.roll === tot) || tab[0];
+      return { kind, title: it.name, sub: `${r[1]} · ${r[2]}d12 = ${dice.join(" + ")}${r[2] > 1 ? " = " + tot : ""} · ${it.en} · ${agg ? "tabella aggiuntiva SRD 2.0" : "manuale base"}`, lines: [["", it.text]] };
     }
   }
   function genSheet(kind) {
@@ -2213,7 +2217,8 @@
     if (kind) genState.kind = kind;
     const res = genState.last && genState.last.kind === genState.kind ? genState.last : (genState.last = genRoll(genState.kind));
     const opts = genState.kind === "png" || genState.kind === "nome" ? `<div class="chips">${[["", "Qualsiasi"]].concat(Object.entries(GEN.cultures).map(([k, v]) => [k, v.label])).map(([k, v]) => `<button class="chip small ${genState.culture === k ? "on" : ""}" data-a="genCult" data-k="${k}">${esc(v)}</button>`).join("")}</div>`
-      : genState.kind === "bottino" || genState.kind === "consumabile" ? `<div class="chips">${RARITY.map(([k, v, n]) => `<button class="chip small ${genState.rarity === k ? "on" : ""}" data-a="genRar" data-k="${k}">${v} (${n}d12)</button>`).join("")}</div>` : "";
+      : genState.kind === "bottino" || genState.kind === "consumabile" ? `<div class="chips">${RARITY.map(([k, v, n]) => `<button class="chip small ${genState.rarity === k ? "on" : ""}" data-a="genRar" data-k="${k}">${v} (${n}d12)</button>`).join("")}</div>
+        <div class="chips">${LOOT_TABLES.map(([k, v]) => `<button class="chip small ${genState.table === k ? "on" : ""}" data-a="genTab" data-k="${k}">${v}</button>`).join("")}</div>` : "";
     openModal("Al volo", `<div class="chips scrollx">${GEN_KINDS.map(([k, v]) => `<button class="chip ${genState.kind === k ? "on" : ""}" data-a="genKind" data-k="${k}">${v}</button>`).join("")}</div>${opts}
       <div class="genres"><h3>${esc(res.title)}</h3>${res.sub ? `<div class="sub">${esc(res.sub)}</div>` : ""}
         <dl>${res.lines.map(([k, v]) => `${k ? `<dt>${esc(k)}</dt>` : ""}<dd>${esc(v)}</dd>`).join("")}</dl></div>
@@ -2523,6 +2528,7 @@
     gen: (el) => { genState.last = null; genSheet(el.dataset.k); },
     genKind: (el) => { genState.kind = el.dataset.k; genState.last = null; genSheet(); },
     genCult: (el) => { genState.culture = el.dataset.k; genState.last = null; genSheet(); },
+    genTab: (el) => { genState.table = el.dataset.k; genState.last = null; genSheet(); },
     genRar: (el) => { genState.rarity = el.dataset.k; genState.last = null; genSheet(); },
     genAgain: () => { genState.last = null; genSheet(); },
     genCopy: () => { if (genState.last) copyText(genText(genState.last), "Copiato"); },
