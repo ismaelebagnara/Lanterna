@@ -2195,7 +2195,9 @@
   const PNG_BOND = ["deve un favore a {P}", "ha visto {P} fare qualcosa che non doveva", "è parente alla lontana di {P}, e ci tiene a dirlo", "scambia {P} per qualcun altro, e non si lascia convincere", "ha sentito parlare di {P}, e non bene", "ha venduto a {P} qualcosa di difettoso, tempo fa", "ammira {P} in segreto e ne imita i gesti", "ha perso qualcuno per colpa di {P}", "ha combattuto una volta al fianco di {P}", "conserva un oggetto che apparteneva a {P}", "ha promesso a qualcuno di consegnare {P}", "conosce un segreto sul passato di {P}", "deve la vita a {P}, che non se lo ricorda", "vuole sfidare {P} davanti a tutti", "sogna il volto di {P} da settimane, senza averci mai parlato", "ha un conto in sospeso con la famiglia di {P}"];
   const partyTier = () => { const c = C(); const ls = c ? c.pcs.map((p) => num(p.level, 1)) : []; const l = ls.length ? Math.round(ls.reduce((x, y) => x + y, 0) / ls.length) : 1; return l <= 1 ? 1 : l <= 4 ? 2 : l <= 7 ? 3 : 4; };
   const pickN = (arr, n) => { const a0 = arr.slice(); const out = []; while (out.length < n && a0.length) out.push(a0.splice(Math.floor(Math.random() * a0.length), 1)[0]); return out; };
+  // regola del manuale: comune 1d12 o 2d12, non comune 2d12 o 3d12, raro 3d12 o 4d12, leggendario 4d12 o 5d12
   const RARITY = [["comune", "Comune", 1], ["noncomune", "Non comune", 2], ["raro", "Raro", 3], ["leggendario", "Leggendario", 4]];
+  const LOOT_RECENT = {};
   const genState = { kind: "png", culture: "", rarity: "comune", table: "tutte", odds: "incerto", place: "", tier: 0, arch: "", env: "", job: "", road: "", trap: "", ctx: "", last: null };
   const LOOT_TABLES = [["tutte", "Tutte"], ["base", "Manuale base"], ["agg", "Aggiuntiva SRD 2.0"]];
   const genName = (cult) => { const cs = Object.keys(GEN.cultures); const k = cult && GEN.cultures[cult] ? cult : pick(cs); return { name: pick(GEN.cultures[k].names) + (Math.random() < 0.55 ? " " + pick(GEN.epithets) : ""), culture: GEN.cultures[k].label.replace(/ \(.*\)$/, "") }; };
@@ -2269,12 +2271,20 @@
     }
     if (kind === "nome") { const arr = Array.from({ length: 6 }, () => genName(genState.culture)); return { kind, title: "Nomi", lines: arr.map((n) => [n.culture, n.name]) }; }
     if (kind === "bottino" || kind === "consumabile") {
-      const r = RARITY.find((x) => x[0] === genState.rarity) || RARITY[0]; const dice = Array.from({ length: r[2] }, () => rnd(12)); const tot = dice.reduce((a, b) => a + b, 0);
-      // due tabelle con gli stessi tiri: con "Tutte" una moneta sceglie quale usare
-      const hasAgg = !!(GEN.loot.oggetti2 && GEN.loot.consumabili2);
-      const agg = hasAgg && (genState.table === "agg" || (genState.table === "tutte" && Math.random() < 0.5));
-      const tab = kind === "bottino" ? (agg ? GEN.loot.oggetti2 : GEN.loot.oggetti) : (agg ? GEN.loot.consumabili2 : GEN.loot.consumabili); const it = tab.find((x) => x.roll === tot) || tab[0];
-      return { kind, title: it.name, sub: `${r[1]} · ${r[2]}d12 = ${dice.join(" + ")}${r[2] > 1 ? " = " + tot : ""} · ${it.en} · ${agg ? "tabella aggiuntiva SRD 2.0" : "manuale base"}`, read: it.text, lines: [] };
+      const r = RARITY.find((x) => x[0] === genState.rarity) || RARITY[0];
+      // si tira il numero minore o maggiore di d12 (come dice il manuale), così sono raggiungibili tutti i risultati della fascia;
+      // un oggetto uscito di recente viene ritirato, fino a 4 volte, per non vedere sempre gli stessi
+      const hasAgg = !!(GEN.loot.oggetti2 && GEN.loot.consumabili2); const key = kind + "|" + r[0] + "|" + genState.table; const recent = LOOT_RECENT[key] || (LOOT_RECENT[key] = []);
+      let out = null;
+      for (let t = 0; t < 5; t++) {
+        const band = (S.settings.lootMode || "dadi") === "fasce"; const ri = RARITY.indexOf(r);
+        const n = r[2] + (Math.random() < 0.5 ? 0 : 1); const dice = band ? [] : Array.from({ length: n }, () => rnd(12)); const tot = band ? ri * 15 + rnd(15) : dice.reduce((a, b) => a + b, 0);
+        const agg = hasAgg && (genState.table === "agg" || (genState.table === "tutte" && Math.random() < 0.5));
+        const tab = kind === "bottino" ? (agg ? GEN.loot.oggetti2 : GEN.loot.oggetti) : (agg ? GEN.loot.consumabili2 : GEN.loot.consumabili); const it = tab.find((x) => x.roll === tot) || tab[0];
+        out = { n, dice, tot, agg, it }; if (!recent.includes(it.name)) break;
+      }
+      recent.push(out.it.name); if (recent.length > 6) recent.shift();
+      return { kind, title: out.it.name, sub: `${r[1]} · ${out.dice.length ? `${out.n}d12 = ${out.dice.join(" + ")}${out.n > 1 ? " = " + out.tot : ""}` : `n. ${out.tot} (fascia ${RARITY.indexOf(r) * 15 + 1}-${RARITY.indexOf(r) * 15 + 15})`} · ${out.it.en} · ${out.agg ? "tabella aggiuntiva SRD 2.0" : "manuale base"}`, read: out.it.text, lines: [] };
     }
     return { kind, title: "—", lines: [] };
   }
@@ -2325,7 +2335,8 @@
     if (K === "compl") return optSel("ctx", "Contesto", any.concat(Object.keys(GEN.complicazioni4).map((k) => [k, k])));
     if (K === "partenza") return optSel("place", "Contesto", any.concat(Object.keys(GEN.partenze).map((k) => [k, k])));
     if (K === "nome") return optSel("culture", "Cultura", any.concat(Object.entries(GEN.cultures).map(([k, v]) => [k, v.label])));
-    if (K === "bottino" || K === "consumabile") return optSel("rarity", "Rarità", RARITY.map(([k, v, n]) => [k, `${v} (${n}d12)`])) + optSel("table", "Tabella", LOOT_TABLES);
+    if (K === "bottino" || K === "consumabile") return optSel("rarity", "Rarità", RARITY.map(([k, v, n], i) => [k, (S.settings.lootMode || "dadi") === "fasce" ? `${v} (${i * 15 + 1}-${i * 15 + 15})` : `${v} (${n}d12 o ${n + 1}d12)`])) + optSel("table", "Tabella", LOOT_TABLES)
+      + `<label class="gsel"><span>Metodo</span><select data-lootmode><option value="dadi" ${(S.settings.lootMode || "dadi") === "dadi" ? "selected" : ""}>Dadi del manuale</option><option value="fasce" ${S.settings.lootMode === "fasce" ? "selected" : ""}>Fasce uguali</option></select></label>`;
     return "";
   }
   const genLabel = (k) => (GEN_KINDS.find((x) => x[0] === k) || [k, k])[1];
@@ -2354,6 +2365,7 @@
     openModal("Schermo del GM", `${screenTabs(SCR.tab)}<div class="scrbody">${body}</div>`, { focus: false, full: true, cls: "scr", extra });
     $("#modal-body").scrollTop = 0;
     if (SCR.tab === "regole") afterRules();
+    const lm = $("#modal-body select[data-lootmode]"); if (lm) lm.addEventListener("change", () => { S.settings.lootMode = lm.value; save(); genNew(); gmScreen(); });
     $$('#modal-body select[data-go]').forEach((s0) => s0.addEventListener("change", () => { const o = s0.dataset.go; genState[o] = o === "tier" ? num(s0.value, 0) : s0.value; genNew(); gmScreen(); }));
   }
   function rulesSheet(openId) { SCR.tab = "regole"; SCR.q = ""; if (openId) SCR.sec = openId; gmScreen("regole"); }
