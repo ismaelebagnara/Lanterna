@@ -573,3 +573,9 @@ textarea.inl { resize: none; overflow: hidden; line-height: 1.35; min-height: 30
 .modal[data-kind="scr"] .sheet-foot .hist:disabled { opacity: .3; }
 .modal[data-kind="scr"] .sheet-foot .grow { flex: 1; width: auto; }
 .modal[data-kind="scr"] .sheet-foot > .btn.ghost:not(.hist) { min-height: 52px; }
+
+/* ---- scorrimento: il pannello non trascina la pagina sotto; su PC lo schermo del GM resta leggibile */
+.modal, .sheet-body { overscroll-behavior: contain; }
+@media (min-width: 860px) {
+  .modal.full[data-kind="scr"] .sheet { max-width: 820px; margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+}

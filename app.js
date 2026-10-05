@@ -2971,5 +2971,15 @@
   loadMaps().then(() => { render(); processInbox(); syncUI(); if (syncOn() && getTok()) syncNow(); });
   document.addEventListener("visibilitychange", () => { if (!syncOn() || !getTok()) { syncUI(); return; } if (document.visibilityState === "hidden") { if (syncDirty()) { clearTimeout(SY.timer); syncNow(); } } else syncNow(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") processInbox(); });
+  // rotella del mouse: le file che scorrono di lato si scorrono anche con la rotella; sullo sfondo di un pannello si scorre il pannello
+  document.addEventListener("wheel", (e) => {
+    if (e.ctrlKey) return;
+    const row = e.target.closest && e.target.closest(".scrollx");
+    if (row && Math.abs(e.deltaY) > Math.abs(e.deltaX) && row.scrollWidth > row.clientWidth + 2) {
+      const before = row.scrollLeft; row.scrollLeft += e.deltaY; if (row.scrollLeft !== before) { e.preventDefault(); return; }
+    }
+    const modal = $("#modal");
+    if (!modal.hidden && !(e.target.closest && e.target.closest("#modal-body, #modal-foot .scrollx"))) { const b = $("#modal-body"); if (b && b.scrollHeight > b.clientHeight) { b.scrollTop += e.deltaY; e.preventDefault(); } }
+  }, { passive: false });
   document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "drvQ") { e.preventDefault(); A.drvSearch(); } });
 })();
