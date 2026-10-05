@@ -522,3 +522,54 @@ textarea.inl { resize: none; overflow: hidden; line-height: 1.35; min-height: 30
 .genkinds { flex-wrap: nowrap; align-items: center; margin-bottom: 4px; }
 .genkinds .gsep { flex: none; font-family: "Cinzel", serif; font-size: .58rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 0 2px 0 8px; border-left: 1px solid var(--line); }
 .genkinds .gsep:first-child { border-left: 0; padding-left: 0; }
+
+/* ---- schermo del GM (a tutto schermo) */
+.modal.full[data-kind="scr"] .sheet-body { display: block; overflow-y: auto; padding: 0 16px 20px; -webkit-overflow-scrolling: touch; }
+.modal[data-kind="scr"] .screentabs { position: sticky; top: 0; z-index: 3; margin: 0 -16px 12px; padding: 4px 16px 10px; background: var(--panel); border-radius: 0; border: 0; border-bottom: 1px solid var(--line); }
+.scrsearch { position: sticky; top: 58px; z-index: 2; margin: -4px -16px 12px; padding: 0 16px 10px; background: var(--panel); }
+.scrsearch input { width: 100%; min-height: 48px; font-size: 1rem; }
+/* regole */
+.rgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rtile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 84px; padding: 12px; text-align: left; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font: inherit; }
+.rtile b { font-family: "Cinzel", serif; font-size: .84rem; line-height: 1.25; }
+.rtile span { font-size: .84rem; line-height: 1.3; color: var(--muted); }
+.rtile:active, .gtile:active, .rhit:active { border-color: var(--ember); }
+.rback { background: none; border: 0; padding: 6px 0; color: var(--ember-2); font: inherit; font-size: .95rem; }
+.rsec h2 { margin: 2px 0 10px; font-size: 1.25rem; }
+.rsec .rbody { font-size: 1rem; line-height: 1.5; }
+.rhead { margin: 14px 0 4px; font-family: "Cinzel", serif; font-size: .78rem; color: var(--muted); }
+.rhit { display: block; width: 100%; margin: 6px 0; padding: 10px 12px; text-align: left; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font: inherit; line-height: 1.4; }
+.rhit mark, .rbody mark { background: rgba(224, 182, 81, .32); color: inherit; border-radius: 3px; padding: 0 1px; }
+@keyframes rflash { from { background: rgba(224, 182, 81, .35); } to { background: transparent; } }
+.rbody .flash { animation: rflash 2.2s ease-out; }
+@media (max-width: 600px) {
+  .rbody .rt, .rbody .rt tbody, .rbody .rt tr, .rbody .rt td { display: block; width: auto; }
+  .rbody .rt tr:has(th) { display: none; }
+  .rbody .rt tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .rbody .rt td { border: 0; padding: 1px 0; }
+  .rbody .rt td:first-child { white-space: normal; font-weight: 700; color: var(--ink); }
+  .rbody .rt td[data-label]:not(:first-child)::before { content: attr(data-label) ": "; color: var(--muted); font-size: .82rem; }
+}
+/* generatori */
+.gintro { margin: 0 0 4px; }
+.ghead { margin: 4px 0 6px; font-family: "Cinzel", serif; font-size: .8rem; color: var(--muted); }
+.gtiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.gtile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 74px; padding: 8px 2px; font-size: .8rem; line-height: 1.15; text-align: center; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font: inherit; font-size: .9rem; }
+.gtile i { font-style: normal; font-size: 1.5rem; line-height: 1; }
+.gtile.on { border-color: var(--ember); }
+.gbar .gcur { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 8px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font: inherit; }
+.gcur i { font-style: normal; font-size: 1.3rem; }
+.gcur b { font-family: "Cinzel", serif; font-size: .95rem; }
+.gcur span { margin-left: auto; color: var(--ember-2); font-size: .9rem; }
+.gfilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 10px 0 0; }
+.gsel span { display: block; margin: 0 0 3px 2px; font-size: .78rem; color: var(--muted); }
+.gsel select { width: 100%; min-height: 46px; font-size: .95rem; }
+.modal[data-kind="scr"] .genres { margin: 12px 0 0; padding: 16px; }
+.modal[data-kind="scr"] .genres h3 { font-size: 1.3rem; }
+.modal[data-kind="scr"] .genres dd { font-size: 1.02rem; line-height: 1.45; margin-bottom: 4px; }
+.gacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.modal[data-kind="scr"] .sheet-foot { display: flex; gap: 8px; align-items: center; }
+.modal[data-kind="scr"] .sheet-foot .hist { min-width: 48px; min-height: 52px; padding: 0; font-size: 1.4rem; }
+.modal[data-kind="scr"] .sheet-foot .hist:disabled { opacity: .3; }
+.modal[data-kind="scr"] .sheet-foot .grow { flex: 1; width: auto; }
+.modal[data-kind="scr"] .sheet-foot > .btn.ghost:not(.hist) { min-height: 52px; }

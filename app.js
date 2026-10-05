@@ -165,7 +165,7 @@
     foot.innerHTML = (opts.extra || "") + (opts.onSave ? `<button class="btn primary" data-a="modalSave">${esc(opts.saveLabel || "Salva")}</button>` : "");
     foot.hidden = !foot.innerHTML;
     modalSave = opts.onSave || null;
-    $("#modal").hidden = false; $("#modal").classList.toggle("full", !!opts.full);
+    $("#modal").hidden = false; $("#modal").classList.toggle("full", !!opts.full); $("#modal").dataset.kind = opts.cls || "";
     document.body.classList.add("noscroll");
     if (!modalOpen) { try { history.pushState({ lm: 1 }, ""); } catch (_) {} }
     modalOpen = true;
@@ -322,13 +322,6 @@
   }
   function hideLinkPanels() { $$("#modal-body .linkpanel").forEach((p) => { p.hidden = true; p.innerHTML = ""; p.dataset.start = ""; }); }
   const RULES = window.RULES || [];
-  function rulesSheet(openId) {
-    openModal("Schermo del GM", `${screenTabs("regole")}<input type="search" id="rq" class="search" placeholder="Cerca una regola: Paura, riposo, Vulnerabile…">
-      <div id="rlist">${RULES.map((r) => `<details class="rule" data-id="${r.id}" ${r.id === openId ? "open" : ""}><summary>${esc(r.title)}</summary><div class="rbody">${r.body}</div></details>`).join("")}</div>`, { focus: false });
-    const q = $("#rq"); q.addEventListener("input", () => { const v = q.value.trim().toLowerCase();
-      $$("#rlist .rule").forEach((d) => { const r = RULES.find((x) => x.id === d.dataset.id); const hit = !v || (r.title + " " + r.tags + " " + d.querySelector(".rbody").textContent).toLowerCase().includes(v); d.hidden = !hit; d.open = !!v && hit; }); });
-    if (openId) setTimeout(() => { const d = $(`#rlist [data-id="${openId}"]`); if (d) d.scrollIntoView({ block: "start" }); }, 50);
-  }
   function searchSheet() {
     openModal("Cerca", `<input type="search" id="gq" class="search" placeholder="PG, PNG, luoghi, avversari, sessioni…"><div id="gres"></div>`);
     const run = () => {
@@ -1077,7 +1070,7 @@
         <div class="row gap wrap">${[4, 6, 8, 10, 12, 20].map((d) => `<button class="btn small" data-a="rollQuick" data-d="${d}">d${d}</button>`).join("")}</div>
         <div class="row gap"><input name="expr" placeholder="3d8+4" class="grow"><button class="btn" data-a="rollExpr">Tira</button></div>
       </div>
-      <div class="dice-free"><h4>Al volo</h4><div class="chips">${[["oracolo", "Oracolo"], ["png", "PNG"], ["compl", "Complicazione"], ["bottino", "Bottino"]].map(([k, v]) => `<button class="chip" data-a="gen" data-k="${k}">${v}</button>`).join("")}<button class="chip" data-a="genOpen">Tutti…</button></div></div>
+      <div class="dice-free"><h4>Al volo</h4><div class="chips">${[["png", "PNG"], ["luogo", "Luogo"], ["compl", "Imprevisto"], ["bottino", "Bottino"]].map(([k, v]) => `<button class="chip" data-a="gen" data-k="${k}">${v}</button>`).join("")}<button class="chip" data-a="genOpen">Tutti…</button></div></div>
       <div id="rollOut"></div>
       <h4>Ultimi tiri</h4><ul class="rolllog" id="rollLog">${rollLog(c)}</ul>`, { focus: false });
   }
@@ -2192,11 +2185,10 @@
   const GEN_GROUPS = [
     ["Persone", [["png", "PNG"], ["nome", "Nomi"]]],
     ["Luoghi", [["luogo", "Luogo"], ["locanda", "Locanda"], ["evento", "Viaggio"], ["trappola", "Trappola"]]],
-    ["Storia", [["aggancio", "Incarico"], ["partenza", "Inizio forte"], ["compl", "Complicazione"], ["oracolo", "Oracolo"], ["segreto", "Segreto"], ["diceria", "Diceria"]]],
+    ["Storia", [["aggancio", "Incarico"], ["partenza", "Inizio forte"], ["compl", "Imprevisto"], ["segreto", "Segreto"], ["diceria", "Diceria"]]],
     ["Tesori", [["bottino", "Bottino"], ["consumabile", "Consumabile"]]],
   ];
   const GEN_KINDS = GEN_GROUPS.flatMap((g) => g[1]);
-  const ORACLE = [["prob", "Probabile", 10], ["incerto", "Incerto", 13], ["improb", "Improbabile", 16]];
   const TRAP_DMG = { 1: "1d10+3", 2: "2d10+4", 3: "3d10+5", 4: "4d10+12" };
   const TIER_D = { 1: 11, 2: 14, 3: 17, 4: 20 };
   // legami PNG–PG: frasi neutre rispetto al genere, {P} è il nome del PG
@@ -2268,12 +2260,6 @@
       return { kind, title: t, sub: ctx + " · dopo un tiro con Paura, o spendendo una Paura", read: subD(x, tier), lines: [] };
     }
     if (kind === "partenza") { const ks = Object.keys(GEN.partenze); const k = genState.place && GEN.partenze[genState.place] ? genState.place : pick(ks); return { kind, title: "Inizio forte", sub: k + " · partite da qui, nel mezzo dell'azione", read: fresh("start." + k, GEN.partenze[k]), lines: [] }; }
-    if (kind === "oracolo") {
-      const o = ORACLE.find((x) => x[0] === genState.odds) || ORACLE[1]; const h = rnd(12), f = rnd(12), tot = h + f; const yes = tot >= o[2]; const crit = h === f;
-      const title = crit ? "Svolta!" : yes ? (h > f ? "Sì, e…" : "Sì, ma…") : (h > f ? "No, ma…" : "No, e…");
-      const mean = crit ? fresh("svolta", GEN.svolte) : yes ? (h > f ? "Va bene, e c'è un vantaggio in più: un dettaglio utile, un alleato, un'occasione." : "Va bene, ma con un costo: tempo, una risorsa, uno Stress, un'attenzione indesiderata.") : (h > f ? "Non va, ma resta uno spiraglio: un indizio, un'altra via, qualcuno che può aiutare." : "Non va, e la situazione peggiora: è il momento di una mossa del GM.");
-      return { kind, title, sub: `${o[1]} (serve ${o[2]}+) · Speranza ${h} + Paura ${f} = ${tot}`, read: mean, lines: [["Se serve uno spunto", `${pick(GEN.azioni)} ${pick(GEN.temi)} · ${pick(GEN.azioni)} ${pick(GEN.temi)}`]] };
-    }
     if (kind === "segreto") { const r = fillWorld(fresh("secret", GEN.segreti)); return { kind, title: "Segreto o indizio", sub: r.camp ? "con i nomi della vostra campagna" : "aggiungete PNG e luoghi nel Mondo: i segreti useranno i vostri nomi", read: r.text, lines: [], secret: r.text }; }
     if (kind === "diceria") {
       const world = c && c.world.filter((w) => w.kind === "png").length >= 2 && Math.random() < 0.4;
@@ -2292,34 +2278,88 @@
     }
     return { kind, title: "—", lines: [] };
   }
-  function genSheet(kind) {
-    if (!GEN) return toast("Generatori non disponibili");
-    if (kind) genState.kind = kind;
-    const res = genState.last && genState.last.kind === genState.kind ? genState.last : (genState.last = genRoll(genState.kind));
-    const optRow = (o, list, label) => `<div class="chips scrollx">${(label ? [["", label]] : []).concat(list).map(([k, v]) => `<button class="chip small ${String(genState[o]) === String(k) ? "on" : ""}" data-a="genOpt" data-o="${o}" data-k="${esc(k)}">${esc(v)}</button>`).join("")}</div>`;
-    const tierRow = optRow("tier", [[0, `Rango del gruppo (${partyTier()})`], [1, "Rango 1"], [2, "Rango 2"], [3, "Rango 3"], [4, "Rango 4"]], "");
-    const K = genState.kind;
-    const opts = K === "png" ? optRow("arch", GEN.archetipi.map((x) => [x.id, x.label]), "Qualsiasi")
-      : K === "luogo" ? optRow("env", GEN.ambienti3.map((x) => [x.id, x.label]), "Qualsiasi") + tierRow
-      : K === "aggancio" ? optRow("job", GEN.incarichi3.map((x) => [x.id, x.label]), "Qualsiasi")
-      : K === "evento" ? optRow("road", GEN.viaggi.map((x) => [x.id, x.label]), "Qualsiasi") + tierRow
-      : K === "trappola" ? optRow("trap", GEN.trappole4.map((x) => [x.id, x.label]), "Qualsiasi") + tierRow
-      : K === "compl" ? optRow("ctx", Object.keys(GEN.complicazioni4).map((k) => [k, k]), "Qualsiasi")
-      : K === "partenza" ? optRow("place", Object.keys(GEN.partenze).map((k) => [k, k]), "Qualsiasi")
-      : K === "nome" ? `<div class="chips scrollx">${[["", "Qualsiasi"]].concat(Object.entries(GEN.cultures).map(([k, v]) => [k, v.label])).map(([k, v]) => `<button class="chip small ${genState.culture === k ? "on" : ""}" data-a="genCult" data-k="${k}">${esc(v)}</button>`).join("")}</div>`
-      : K === "oracolo" ? optRow("odds", ORACLE.map(([k, v]) => [k, v]), "")
-      : K === "bottino" || K === "consumabile" ? `<div class="chips">${RARITY.map(([k, v, n]) => `<button class="chip small ${genState.rarity === k ? "on" : ""}" data-a="genRar" data-k="${k}">${v} (${n}d12)</button>`).join("")}</div>
-        <div class="chips">${LOOT_TABLES.map(([k, v]) => `<button class="chip small ${genState.table === k ? "on" : ""}" data-a="genTab" data-k="${k}">${v}</button>`).join("")}</div>` : "";
-    openModal("Schermo del GM", `${screenTabs("volo")}<div class="chips scrollx genkinds">${GEN_GROUPS.map(([g, ks]) => `<span class="gsep">${g}</span>${ks.map(([k, v]) => `<button class="chip small ${K === k ? "on" : ""}" data-a="genKind" data-k="${k}">${v}</button>`).join("")}`).join("")}</div>${opts}
-      <div class="genres"><h3>${esc(res.title)}</h3>${res.sub ? `<div class="sub">${esc(res.sub)}</div>` : ""}${res.read ? `<p class="genread">${esc(res.read)}</p>` : ""}
-        ${res.lines.length ? `<dl>${res.lines.map(([k, v, f]) => `${k ? `<dt class="${f === "gm" ? "gmonly" : ""}">${esc(k)}${f === "gm" ? " · solo GM" : ""}</dt>` : ""}<dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
-        ${res.advs && res.advs.length ? `<div class="genadv"><span>${res.kind === "png" ? "Se si combatte" : "Avversari possibili"}</span><div class="chips">${res.advs.map((x) => `<button class="chip small" data-a="viewAdv" data-id="${x.id}">${esc(x.name)} · R${esc(x.tier)}</button>`).join("")}</div></div>` : ""}</div>
-      <div class="row gap wrap">${res.kind === "png" || res.kind === "luogo" ? `<button class="btn small" data-a="genSave">Salva nel Mondo</button>` : ""}${res.env ? `<button class="btn small" data-a="genEnv">Salva come ambiente</button>` : ""}${res.secret ? `<button class="btn small" data-a="genSecret">Tra i segreti</button>` : ""}${liveSession() ? `<button class="btn small ghost" data-a="genLog">Nel diario</button>` : ""}<button class="btn small ghost" data-a="genCopy">Copia</button></div>`,
-      { focus: false, extra: `<button class="btn primary big" data-a="genAgain">Rilancia</button>` });
-  }
-  // lo Schermo del GM ha due pagine: le regole da consultare e i generatori "al volo"
-  const screenTabs = (on) => `<div class="segment screentabs"><button class="${on === "regole" ? "on" : ""}" data-a="rules">📖 Regole</button><button class="${on === "volo" ? "on" : ""}" data-a="genOpen">🎲 Al volo</button></div>`;
   const genText = (r) => [r.title, r.sub || "", r.read || ""].concat(r.lines.map(([k, v]) => (k ? k + ": " : "") + v)).concat(r.advs && r.advs.length ? [(r.kind === "png" ? "Se si combatte: " : "Avversari possibili: ") + r.advs.map((x) => x.name).join(", ")] : []).filter(Boolean).join("\n");
+  // ---------------------------------------------------------------- schermo del GM (a tutto schermo: regole e generatori)
+  const SCR = { tab: "regole", sec: null, q: "", genView: "grid", hist: [], hidx: -1, focus: null };
+  const RULE_HINT = { tiri: "Esiti con Speranza e Paura", diff: "La scala da 5 a 30", vantaggio: "Aiutare, tiri di gruppo e combinati", mosse: "Cosa fare quando tocca a voi", paura: "Quando si ottiene e come spenderla", distanze: "Da Mischia a Remota", danni: "Soglie, PF e Caselle Armatura", condizioni: "Nascosto, Trattenuto, Vulnerabile", morte: "Le tre mosse finali e le cicatrici", riposi: "Breve, lungo e mosse da interludio", avversari: "Punti Battaglia e ruoli", umbra: "Le regole del frame" };
+  const GEN_ICON = { png: "👤", nome: "🏷️", luogo: "🏞️", locanda: "🍺", evento: "🧭", trappola: "⚙️", aggancio: "📜", partenza: "⚡", compl: "⚠️", segreto: "🗝️", diceria: "💬", bottino: "💰", consumabile: "🧪" };
+  let RULE_IDX = null;
+  const normTxt = (s0) => String(s0 || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const ruleEls = (root) => [...root.querySelectorAll("tr, li, p")].filter((el) => !(el.tagName === "TR" && el.querySelector("th")) && !(el.tagName === "P" && el.closest("li")));
+  function ruleIndex() {
+    if (RULE_IDX) return RULE_IDX; RULE_IDX = []; const tpl = document.createElement("template");
+    RULES.forEach((r) => { tpl.innerHTML = r.body; ruleEls(tpl.content).forEach((el, n) => {
+      const t = el.tagName === "TR" ? [...el.children].map((x) => x.textContent.trim()).filter(Boolean).join(" — ") : el.textContent.replace(/\s+/g, " ").trim();
+      if (t.length > 3) RULE_IDX.push({ id: r.id, title: r.title, t, n, k: normTxt(r.title + " " + (r.tags || "") + " " + t) }); }); });
+    return RULE_IDX;
+  }
+  function markWords(text, words) { let h = esc(text); words.forEach((w) => { if (w.length < 2) return; const rx = new RegExp("(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi"); h = h.replace(rx, "<mark>$1</mark>"); }); return h; }
+  function ruleResults(q) {
+    const words = normTxt(q).split(/\s+/).filter(Boolean); const hits = ruleIndex().filter((e) => words.every((w) => e.k.includes(w))).slice(0, 40);
+    if (!hits.length) return `<p class="sub center">Nessuna regola trovata per «${esc(q)}». Provate con una parola sola, ad esempio «Stress» o «riposo».</p>`;
+    let last = ""; return hits.map((e) => { const head = e.id !== last ? `<h4 class="rhead">${esc(e.title)}</h4>` : ""; last = e.id;
+      return head + `<button class="rhit" data-a="ruleOpen" data-id="${e.id}" data-n="${e.n}">${markWords(e.t, q.split(/\s+/))}</button>`; }).join("");
+  }
+  function rulesMain() {
+    if (SCR.q.trim()) return ruleResults(SCR.q.trim());
+    if (SCR.sec) { const r = RULES.find((x) => x.id === SCR.sec); if (r) return `<div class="rsec"><button class="rback" data-a="ruleBack">‹ Tutte le regole</button><h2>${esc(r.title)}</h2><div class="rbody">${r.body}</div></div>`; }
+    return `<div class="rgrid">${RULES.map((r) => `<button class="rtile" data-a="ruleOpen" data-id="${r.id}"><b>${esc(r.title)}</b><span>${esc(RULE_HINT[r.id] || "")}</span></button>`).join("")}</div>`;
+  }
+  // tabelle leggibili sul telefono: ogni cella si porta dietro l'intestazione della sua colonna
+  function labelTables(root) { $$("table.rt", root).forEach((t) => { const hs = [...t.querySelectorAll("tr th")].map((x) => x.textContent.trim()); t.querySelectorAll("tr").forEach((tr) => [...tr.children].forEach((td, i) => { if (td.tagName === "TD" && hs[i]) td.dataset.label = hs[i]; })); }); }
+  function afterRules() {
+    const box = $("#rmain"); if (!box) return; labelTables(box);
+    if (SCR.focus != null) { const el = ruleEls(box)[SCR.focus]; SCR.focus = null; if (el) setTimeout(() => { el.scrollIntoView({ block: "center" }); el.classList.add("flash"); }, 40); }
+    const q = $("#rq"); if (!q) return;
+    q.addEventListener("input", () => { SCR.q = q.value; const b = $("#rmain"); b.innerHTML = rulesMain(); labelTables(b); $("#modal-body").scrollTop = 0; });
+  }
+  // generatori
+  const optSel = (o, label, list) => `<label class="gsel"><span>${esc(label)}</span><select data-go="${o}">${list.map(([k, v]) => `<option value="${esc(k)}" ${String(genState[o]) === String(k) ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>`;
+  function genFilters(K) {
+    const any = [["", "Qualsiasi"]]; const tier = optSel("tier", "Rango", [[0, `Del gruppo (${partyTier()})`], [1, "1"], [2, "2"], [3, "3"], [4, "4"]]);
+    if (K === "png") return optSel("arch", "Archetipo", any.concat(GEN.archetipi.map((x) => [x.id, x.label]).sort((a, b) => a[1].localeCompare(b[1]))));
+    if (K === "luogo") return optSel("env", "Tipo di luogo", any.concat(GEN.ambienti3.map((x) => [x.id, x.label]).sort((a, b) => a[1].localeCompare(b[1])))) + tier;
+    if (K === "aggancio") return optSel("job", "Tipo", any.concat(GEN.incarichi3.map((x) => [x.id, x.label])));
+    if (K === "evento") return optSel("road", "Terreno", any.concat(GEN.viaggi.map((x) => [x.id, x.label]))) + tier;
+    if (K === "trappola") return optSel("trap", "Trappola", any.concat(GEN.trappole4.map((x) => [x.id, x.label]))) + tier;
+    if (K === "compl") return optSel("ctx", "Contesto", any.concat(Object.keys(GEN.complicazioni4).map((k) => [k, k])));
+    if (K === "partenza") return optSel("place", "Contesto", any.concat(Object.keys(GEN.partenze).map((k) => [k, k])));
+    if (K === "nome") return optSel("culture", "Cultura", any.concat(Object.entries(GEN.cultures).map(([k, v]) => [k, v.label])));
+    if (K === "bottino" || K === "consumabile") return optSel("rarity", "Rarità", RARITY.map(([k, v, n]) => [k, `${v} (${n}d12)`])) + optSel("table", "Tabella", LOOT_TABLES);
+    return "";
+  }
+  const genLabel = (k) => (GEN_KINDS.find((x) => x[0] === k) || [k, k])[1];
+  function genGridHtml() {
+    return `${GEN_GROUPS.map(([g, ks]) => `<h4 class="ghead">${g}</h4><div class="gtiles">${ks.map(([k, v]) => `<button class="gtile ${SCR.genView === "result" && genState.kind === k ? "on" : ""}" data-a="genPick" data-k="${k}"><i>${GEN_ICON[k] || "🎲"}</i><span>${esc(v)}</span></button>`).join("")}</div>`).join("")}`;
+  }
+  function genResultHtml(res) {
+    const acts = [res.kind === "png" || res.kind === "luogo" ? `<button class="btn small" data-a="genSave">Salva nel Mondo</button>` : "", res.env ? `<button class="btn small" data-a="genEnv">Salva come ambiente</button>` : "", res.secret ? `<button class="btn small" data-a="genSecret">Tra i segreti</button>` : "", liveSession() ? `<button class="btn small ghost" data-a="genLog">Nel diario</button>` : ""].join("");
+    const f = genFilters(res.kind);
+    return `<div class="gbar"><button class="gcur" data-a="genGrid"><i>${GEN_ICON[res.kind] || "🎲"}</i><b>${esc(genLabel(res.kind))}</b><span>Cambia</span></button></div>
+      ${f ? `<div class="gfilters">${f}</div>` : ""}
+      <article class="genres"><h3>${esc(res.title)}</h3>${res.sub ? `<div class="sub">${esc(res.sub)}</div>` : ""}${res.read ? `<p class="genread">${esc(res.read)}</p>` : ""}
+        ${res.lines.length ? `<dl>${res.lines.map(([k, v, fl]) => `${k ? `<dt class="${fl === "gm" ? "gmonly" : ""}">${esc(k)}${fl === "gm" ? " · solo GM" : ""}</dt>` : ""}<dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
+        ${res.advs && res.advs.length ? `<div class="genadv"><span>${res.kind === "png" ? "Se si combatte" : "Avversari possibili"}</span><div class="chips">${res.advs.map((x) => `<button class="chip small" data-a="viewAdv" data-id="${x.id}">${esc(x.name)} · R${esc(x.tier)}</button>`).join("")}</div></div>` : ""}
+        ${acts ? `<div class="gacts">${acts}</div>` : ""}</article>`;
+  }
+  function genNew() { const r = genRoll(genState.kind); SCR.hist = SCR.hist.slice(0, SCR.hidx + 1).concat([r]).slice(-25); SCR.hidx = SCR.hist.length - 1; genState.last = r; return r; }
+  function gmScreen(tab) {
+    if (tab) SCR.tab = tab;
+    let body, extra = "";
+    if (SCR.tab === "regole") body = `<div class="scrsearch"><input type="search" id="rq" placeholder="Cerca: Vulnerabile, riposo, Paura…" value="${esc(SCR.q)}" autocomplete="off" enterkeyhint="search"></div><div id="rmain">${rulesMain()}</div>`;
+    else if (SCR.genView === "result" && genState.last) {
+      body = genResultHtml(genState.last);
+      extra = `<button class="btn ghost hist" data-a="genPrev" ${SCR.hidx > 0 ? "" : "disabled"} aria-label="Risultato precedente">‹</button><button class="btn ghost hist" data-a="genNext" ${SCR.hidx < SCR.hist.length - 1 ? "" : "disabled"} aria-label="Risultato successivo">›</button><button class="btn ghost" data-a="genCopy">Copia</button><button class="btn primary big grow" data-a="genAgain">Rilancia</button>`;
+    } else body = genGridHtml();
+    openModal("Schermo del GM", `${screenTabs(SCR.tab)}<div class="scrbody">${body}</div>`, { focus: false, full: true, cls: "scr", extra });
+    $("#modal-body").scrollTop = 0;
+    if (SCR.tab === "regole") afterRules();
+    $$('#modal-body select[data-go]').forEach((s0) => s0.addEventListener("change", () => { const o = s0.dataset.go; genState[o] = o === "tier" ? num(s0.value, 0) : s0.value; genNew(); gmScreen(); }));
+  }
+  function rulesSheet(openId) { SCR.tab = "regole"; SCR.q = ""; if (openId) SCR.sec = openId; gmScreen("regole"); }
+  function genSheet(kind) { SCR.tab = "volo"; if (kind) { genState.kind = kind; genNew(); SCR.genView = "result"; } gmScreen("volo"); }
+  // lo Schermo del GM ha due pagine: le regole da consultare e i generatori "al volo"
+  const screenTabs = (on) => `<div class="segment screentabs"><button class="${on === "regole" ? "on" : ""}" data-a="rules">Regole</button><button class="${on === "volo" ? "on" : ""}" data-a="genOpen">Al volo</button></div>`;
 
 
   // ---------------------------------------------------------------- adattare un avversario a un altro rango
@@ -2619,15 +2659,8 @@
     relDel: (el) => { const c = C(); const kind = el.dataset.kind, id = el.dataset.id; const src = kind === "pc" ? c.pcs.find((y) => y.id === id) : c.world.find((y) => y.id === id); if (!src || !src.rels) return;
       const old = src.rels.slice(); src.rels.splice(num(el.dataset.i), 1); save(); openEntity(kind, id);
       toast("Legame tolto", { label: "Annulla", run: () => { src.rels = old; save(); openEntity(kind, id); } }); },
-    gen: (el) => { genState.last = null; genSheet(el.dataset.k); },
-    genKind: (el) => { genState.kind = el.dataset.k; genState.last = null; genSheet(); },
-    genCult: (el) => { genState.culture = el.dataset.k; genState.last = null; genSheet(); },
-    genTab: (el) => { genState.table = el.dataset.k; genState.last = null; genSheet(); },
-    genRar: (el) => { genState.rarity = el.dataset.k; genState.last = null; genSheet(); },
-    genAgain: () => { genState.last = null; genSheet(); },
     genCopy: () => { if (genState.last) copyText(genText(genState.last), "Copiato"); },
     genLog: () => { const r = genState.last; if (!r) return; logEv(r.kind === "png" ? `PNG: ${r.title} — ${r.read || ""}` : genText(r).replace(/\n/g, " · "), { k: "nota", tag: r.kind === "png" ? "png" : "" }); save(); toast("Aggiunto al diario"); },
-    genOpt: (el) => { const o = el.dataset.o; genState[o] = o === "tier" ? num(el.dataset.k, 0) : el.dataset.k; genState.last = null; genSheet(); },
     genEnv: () => { const r = genState.last; if (!r || !r.env) return; const c = C(); const e = r.env;
       const env = { id: uid(), name: r.title, tier: e.tier, type: e.tipo, desc: r.read, impulses: cap(e.imp), adversaries: (r.advs || []).map((x) => x.name).join(", "), difficulty: e.D,
         features: e.feats.concat([{ name: "Domanda ai giocatori", type: "Passiva", text: (r.lines.find((l) => l[0] === "Chiedete ai giocatori") || ["", ""])[1] }]), source: "Al volo" };
@@ -2637,8 +2670,17 @@
       const body = (r.read ? r.read + "\n" : "") + r.lines.map(([k, v]) => `${k}: ${v}`).join("\n") + (r.advs && r.advs.length ? `\n${isPlace ? "Avversari possibili" : "Se si combatte"}: ${r.advs.map((x) => `[[${x.name}]]`).join(", ")}` : "");
       const w = isPlace ? { id: uid(), kind: "luogo", name: r.title, subtitle: (r.sub || "").split(" · ")[0], tags: "al volo", notes: body } : { id: uid(), kind: "png", name: r.title, subtitle: r.arch || "", tags: "al volo", notes: body };
       c.world.push(w); save(); closeModal(); render(); toast(isPlace ? "Luogo salvato nel Mondo" : "PNG salvato nel Mondo", { label: "Apri", run: () => A.viewWorld({ dataset: { id: w.id } }) }); },
-    rules: () => rulesSheet(),
-    genOpen: () => genSheet(),
+    rules: () => { SCR.q = ""; gmScreen("regole"); },
+    ruleOpen: (el) => { SCR.sec = el.dataset.id; SCR.focus = el.dataset.n != null && el.dataset.n !== "" ? num(el.dataset.n) : null; SCR.q = ""; gmScreen("regole"); },
+    ruleBack: () => { SCR.sec = null; gmScreen("regole"); },
+    genOpen: () => gmScreen("volo"),
+    gen: (el) => genSheet(el.dataset.k),
+    genPick: (el) => genSheet(el.dataset.k),
+    genKind: (el) => genSheet(el.dataset.k),
+    genGrid: () => { SCR.genView = "grid"; gmScreen("volo"); },
+    genAgain: () => { genNew(); gmScreen("volo"); },
+    genPrev: () => { if (SCR.hidx > 0) { SCR.hidx--; genState.last = SCR.hist[SCR.hidx]; genState.kind = genState.last.kind; gmScreen("volo"); } },
+    genNext: () => { if (SCR.hidx < SCR.hist.length - 1) { SCR.hidx++; genState.last = SCR.hist[SCR.hidx]; genState.kind = genState.last.kind; gmScreen("volo"); } },
     toastAct: () => { const f = toast._act; toast._act = null; $("#toast").classList.remove("show"); if (f) f(); },
 
     pcCond: (el) => { const p = C().pcs.find((x) => x.id === el.dataset.id); toggleIn(p, "conditions", el.dataset.k); save(); render(); },
